@@ -63,7 +63,7 @@ enum BulkAction: String, Codable, CaseIterable {
 
     var mouth: Mouth {
         switch self {
-        case .chill: return .smile
+        case .chill: return .flat
         case .wave, .unscrew, .inDark, .kick, .dance: return .grin
         case .sleep, .drink, .poked: return .o
         case .burp, .swear: return .wide

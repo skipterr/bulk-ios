@@ -12,7 +12,7 @@ struct FaceView: View {
         Canvas { ctx, size in
             let w = size.width, h = size.height
             let line = Color(white: 0.93)
-            let ew = w * 0.16, eh = h * 0.27
+            let ew = w * 0.2, eh = h * 0.36
             let lw = max(1.4, w * 0.045)
             let stroke = StrokeStyle(lineWidth: lw, lineCap: .round, lineJoin: .round)
 
@@ -25,9 +25,10 @@ struct FaceView: View {
             var ectx = ctx
             if glow { ectx.addFilter(.shadow(color: Color.white.opacity(0.9), radius: 3)) }
 
-            for (i, cx) in [w * 0.3, w * 0.7].enumerated() {
+            // глаза крупные, близко посажены и торчат над макушкой
+            for (i, cx) in [w * 0.32, w * 0.68].enumerated() {
                 let side: CGFloat = i == 0 ? -1 : 1
-                let cy = h * 0.3
+                let cy = h * 0.24
                 switch eyes {
                 case .closed:
                     var p = Path()
@@ -61,8 +62,10 @@ struct FaceView: View {
                 case .open, .wide, .angry:
                     let k: CGFloat = eyes == .wide ? 1.22 : 1
                     let ew2 = ew * k, eh2 = eh * k
-                    ectx.fill(Path(ellipseIn: CGRect(x: cx - ew2, y: cy - eh2, width: ew2 * 2, height: eh2 * 2)), with: .color(.white))
-                    let pr = eyes == .wide ? ew2 * 0.38 : ew2 * 0.58
+                    let eyeRect = CGRect(x: cx - ew2, y: cy - eh2, width: ew2 * 2, height: eh2 * 2)
+                    ectx.fill(Path(ellipseIn: eyeRect), with: .color(.white))
+                    ctx.stroke(Path(ellipseIn: eyeRect), with: .color(Color(white: 0.15)), lineWidth: 1)
+                    let pr = eyes == .wide ? ew2 * 0.3 : ew2 * 0.42
                     ctx.fill(Path(ellipseIn: CGRect(x: cx - pr, y: cy - pr + eh2 * 0.1, width: pr * 2, height: pr * 2)), with: .color(.black))
                     let hr = pr * 0.32
                     ctx.fill(Path(ellipseIn: CGRect(x: cx - pr * 0.35 - hr, y: cy - pr * 0.35 + eh2 * 0.1 - hr, width: hr * 2, height: hr * 2)), with: .color(.white))
@@ -76,7 +79,7 @@ struct FaceView: View {
             }
 
             // рот
-            let mx = w * 0.5, my = h * 0.78, mw = w * 0.13
+            let mx = w * 0.5, my = h * 0.86, mw = w * 0.1
             let mouthFill = Color(red: 0.44, green: 0.12, blue: 0.18)
             let tongue = Color(red: 0.94, green: 0.43, blue: 0.51)
             switch mouth {
@@ -174,6 +177,25 @@ struct BottleView: View {
 
 // MARK: - Тело
 
+// Клякса: неровный край, низ чуть шире верха.
+struct BlobShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        let cx = Double(rect.midX), cy = Double(rect.midY)
+        let rx = Double(rect.width) / 2 / 1.12, ry = Double(rect.height) / 2 / 1.06
+        var p = Path()
+        for i in 0...60 {
+            let a = Double(i) / 60 * 2 * Double.pi
+            let c = cos(a), s = sin(a)
+            let bump = 1 + 0.05 * sin(a * 2 + 1.3) + 0.035 * sin(a * 3 + 0.4)
+            let x = cx + c * rx * bump * (1 + 0.1 * s)
+            let y = min(cy + s * ry * bump, Double(rect.maxY))
+            if i == 0 { p.move(to: CGPoint(x: x, y: y)) } else { p.addLine(to: CGPoint(x: x, y: y)) }
+        }
+        p.closeSubpath()
+        return p
+    }
+}
+
 struct BulkBody: View {
     var eyes: Eyes
     var mouth: Mouth
@@ -188,12 +210,10 @@ struct BulkBody: View {
             let w = g.size.width, h = g.size.height
             let lh = leftHand(w: w, h: h), rh = rightHand(w: w, h: h)
             ZStack {
-                Ellipse().fill(bodyFill(w: w))
-                Ellipse().stroke(rim, lineWidth: 1)
-                Ellipse().fill(Color.white.opacity(dark ? 0.06 : 0.3))
-                    .frame(width: w * 0.2, height: h * 0.13).position(x: w * 0.33, y: h * 0.2)
+                BlobShape().fill(bodyFill(w: w))
+                BlobShape().stroke(rim, lineWidth: 1.2)
                 FaceView(eyes: eyes, mouth: mouth, glow: dark, blush: blush)
-                    .frame(width: w * 0.6, height: h * 0.62).position(x: w * 0.5, y: h * 0.47)
+                    .frame(width: w * 0.6, height: h * 0.62).position(x: w * 0.5, y: h * 0.4)
                 if holding == .bottle {
                     BottleView().frame(width: w * 0.12, height: h * 0.42)
                         .rotationEffect(.degrees(-40))
@@ -208,16 +228,17 @@ struct BulkBody: View {
         }
     }
 
-    private var rim: Color { Color.white.opacity(dark ? 0.1 : 0.22) }
+    private var rim: Color { Color(white: 0.15).opacity(0.9) }
 
+    // матовый серый, как у кляксы
     private var baseColor: Color {
-        if angry { return Color(red: 0.45, green: 0.2, blue: 0.22) }
-        return dark ? Color(red: 0.15, green: 0.155, blue: 0.18) : Color(red: 0.33, green: 0.34, blue: 0.38)
+        if angry { return Color(red: 0.55, green: 0.38, blue: 0.4) }
+        return dark ? Color(white: 0.2) : Color(white: 0.5)
     }
 
     private func bodyFill(w: CGFloat) -> RadialGradient {
-        let top = angry ? Color(red: 0.7, green: 0.35, blue: 0.35) : Color(white: dark ? 0.24 : 0.56)
-        let low = Color(white: dark ? 0.05 : 0.15)
+        let top = angry ? Color(red: 0.66, green: 0.48, blue: 0.5) : Color(white: dark ? 0.24 : 0.58)
+        let low = Color(white: dark ? 0.12 : 0.38)
         return RadialGradient(colors: [top, baseColor, low], center: UnitPoint(x: 0.4, y: 0.2),
                               startRadius: 1, endRadius: w * 0.75)
     }
@@ -406,7 +427,7 @@ struct BulkScene: View {
         let dark = !lightOn
 
         ZStack {
-            Color(red: 0.055, green: 0.055, blue: 0.07)
+            Color(white: 0.16)
             room(w: w, h: h, floorY: floorY, lampX: lampX, bulbY: bulbY)
 
             ShoeView(dark: dark)
@@ -426,7 +447,7 @@ struct BulkScene: View {
                          angry: action == .mad || action == .swear,
                          arms: f.arms ?? pose.arms,
                          holding: action.holding,
-                         blush: 0.15 + min(1, tipsy) * 0.5)
+                         blush: min(1, tipsy) * 0.5)
                     .frame(width: bodyW * pose.sx * CGFloat(f.sx), height: bodyH * pose.sy * CGFloat(f.sy))
                     .rotationEffect(.degrees(pose.tilt + f.tilt + (drunkLook ? 8 : 0)), anchor: .bottom)
                     .offset(x: CGFloat(f.dx), y: CGFloat(f.dy))

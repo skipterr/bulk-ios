@@ -65,7 +65,7 @@ struct BulkWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: kind, provider: BulkProvider()) { entry in
             BulkWidgetView(entry: entry)
-                .containerBackground(for: .widget) { Color(red: 0.055, green: 0.055, blue: 0.07) }
+                .containerBackground(for: .widget) { Color(white: 0.16) }
         }
         .configurationDisplayName("Бульк")
         .description("Живёт своей жизнью. Тыкай, наливай, выключай свет.")

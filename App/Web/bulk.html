@@ -75,7 +75,7 @@ const rgb = (c, a = 1) => `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${a})`;
 const ease = (cur, target, k, dt) => cur + (target - cur) * Math.min(1, k * dt);
 
 const COL = {
-  hi: [150, 154, 166], mid: [78, 81, 92], lo: [36, 38, 46],
+  hi: [168, 168, 174], mid: [128, 128, 134], lo: [86, 86, 92],
   dark: [6, 6, 9], angry: [190, 50, 56], ink: [22, 25, 36],
   shoe: [196, 64, 62], sole: [232, 230, 224], glass: [70, 140, 96]
 };
@@ -121,8 +121,8 @@ const NAMES = {
 // ---------- мир ----------
 const lamp = { x: 0, len: 0, on: true, hasBulb: true, level: 1, flick: 0, swing: 0, swingV: 0, bulbRot: 0 };
 const shoe = { x: 0, y: 0, vx: 0, vy: 0, rot: 0, vr: 0, kickT: 0, hitCD: 0 };
-// пропорции тела: сплюснутый овал
-const RX_K = 1.25, RY_K = 0.78;
+// пропорции тела: приплюснутая клякса
+const RX_K = 1.15, RY_K = 0.86;
 const REST = { l: [-1.02, 0.28], r: [1.02, 0.28] };
 const BULB_POSE = { l: [-0.38, 0.12], r: [0.38, 0.12] };
 const b = {
@@ -684,7 +684,7 @@ function physics(dt) {
 
 // ---------- кадр ----------
 function resetFrame() {
-  b.eyes = 'open'; b.mouth = 'smile'; b.brow = 0; b.redT = 0; b.sTarget = 1; b.jitter = 0; b.walking = false;
+  b.eyes = 'open'; b.mouth = 'flat'; b.brow = 0; b.redT = 0; b.sTarget = 1; b.jitter = 0; b.walking = false;
   b.poseT = b.holdBulb ? BULB_POSE : REST;
   b.tiltT = b.tipsy > 0.4 ? Math.sin(T * 2.1) * 0.09 * b.tipsy : 0;
 }
@@ -726,12 +726,12 @@ function lightLevel() {
 
 function drawRoom(lv) {
   const bp = bulbPos();
-  ctx.fillStyle = '#060609'; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = '#1c1c20'; ctx.fillRect(0, 0, W, H);
   const wall = ctx.createLinearGradient(0, 0, 0, FLOOR);
-  wall.addColorStop(0, rgb([10, 11, 16])); wall.addColorStop(1, rgb([17, 18, 25]));
+  wall.addColorStop(0, rgb([34, 34, 38])); wall.addColorStop(1, rgb([42, 42, 46]));
   ctx.fillStyle = wall; ctx.fillRect(0, 0, W, FLOOR);
   const fl = ctx.createLinearGradient(0, FLOOR, 0, H);
-  fl.addColorStop(0, rgb([22, 23, 30])); fl.addColorStop(1, rgb([9, 9, 13]));
+  fl.addColorStop(0, rgb([31, 31, 35])); fl.addColorStop(1, rgb([22, 22, 26]));
   ctx.fillStyle = fl; ctx.fillRect(0, FLOOR, W, H - FLOOR);
   // плинтус
   ctx.fillStyle = rgb([30, 32, 42], 0.9); ctx.fillRect(0, FLOOR - 3, W, 3);
@@ -822,8 +822,10 @@ function bodyPath(rx, ry) {
   for (let i = 0; i <= n; i++) {
     const a = i / n * Math.PI * 2, c = Math.cos(a), s = Math.sin(a);
     const w = 1 + 0.022 * Math.sin(a * 3 + T * 2.6) + 0.016 * Math.sin(a * 5 - T * 1.9);
-    const x = c * rx * w;
-    let y = -ry + s * ry * w;
+    // клякса: неровный край, низ чуть шире верха
+    const bump = 1 + 0.05 * Math.sin(a * 2 + 1.3) + 0.035 * Math.sin(a * 3 + 0.4);
+    const x = c * rx * w * bump * (1 + 0.1 * s);
+    let y = -ry + s * ry * w * bump;
     if (y > 0) y = 0;
     i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
   }
@@ -853,10 +855,10 @@ function drawBlob(lv) {
   bodyPath(rx, ry);
   ctx.fillStyle = g; ctx.fill();
   // контурный свет, чтобы чёрное тело не терялось в темноте
-  ctx.strokeStyle = `rgba(190,205,235,${0.12 + 0.3 * la})`; ctx.lineWidth = Math.max(1.5, R * 0.04); ctx.stroke();
+  ctx.strokeStyle = 'rgba(38,38,44,.9)'; ctx.lineWidth = Math.max(1.5, R * 0.04); ctx.stroke();
 
-  // блик
-  ctx.fillStyle = `rgba(255,255,255,${0.42 * la})`;
+  // едва заметный блик — тело матовое
+  ctx.fillStyle = `rgba(255,255,255,${0.08 * la})`;
   ctx.beginPath(); ctx.ellipse(ldir * rx * 0.35 - rx * 0.1, -ry * 1.6, rx * 0.16, ry * 0.1, -0.5, 0, Math.PI * 2); ctx.fill();
 
   drawFace(rx, ry, lv, mid);
@@ -865,8 +867,9 @@ function drawBlob(lv) {
 }
 
 function drawFace(rx, ry, lv, bodyCol) {
-  const fx = b.look.x * rx * 0.22, fy = -ry * 1.15 + b.look.y * ry * 0.12;
-  const ex = rx * 0.33, ew = rx * 0.19, eh = ry * 0.24;
+  // глаза крупные, близко посажены и торчат над макушкой
+  const fx = b.look.x * rx * 0.18, fy = -ry * 1.45 + b.look.y * ry * 0.1;
+  const ex = rx * 0.24, ew = rx * 0.22, eh = ry * 0.34;
   const ink = rgb(COL.ink);
   const line = 'rgb(226,231,242)', mouthFill = 'rgb(112,30,46)';
   const dark = lv < 0.35;
@@ -874,7 +877,7 @@ function drawFace(rx, ry, lv, bodyCol) {
   ctx.lineCap = 'round'; ctx.lineJoin = 'round';
 
   // румянец
-  const bl = 0.12 + b.blush * 0.5;
+  const bl = b.blush * 0.5;
   ctx.fillStyle = `rgba(255,120,150,${bl * (0.4 + 0.6 * Math.max(lv, 0.2))})`;
   for (const s of [-1, 1]) { ctx.beginPath(); ctx.ellipse(fx + s * ex * 1.35, fy + eh * 1.05, ew * 0.75, eh * 0.35, 0, 0, Math.PI * 2); ctx.fill(); }
 
@@ -897,10 +900,11 @@ function drawFace(rx, ry, lv, bodyCol) {
     else ctx.ellipse(x, y, w, h, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.shadowBlur = 0;
+    ctx.strokeStyle = 'rgba(38,38,44,.9)'; ctx.lineWidth = Math.max(1.2, R * 0.035); ctx.stroke();
     let px = b.look.x * w * 0.4, py = b.look.y * h * 0.35;
     if (kind === 'drunk') { px += s * w * 0.25; py = h * 0.4; }
     if (kind === 'sleepy') py = h * 0.45;
-    const pr = kind === 'wide' ? w * 0.38 : w * 0.56;
+    const pr = kind === 'wide' ? w * 0.3 : w * 0.42;
     ctx.fillStyle = ink;
     ctx.beginPath(); ctx.arc(x + px, y + py, pr, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = 'rgba(255,255,255,.9)';
@@ -919,7 +923,7 @@ function drawFace(rx, ry, lv, bodyCol) {
   }
 
   // рот
-  const mx = fx, my = fy + eh * 1.35, mw = rx * 0.2;
+  const mx = fx, my = fy + eh * 1.6, mw = rx * 0.14;
   ctx.strokeStyle = line; ctx.fillStyle = mouthFill; ctx.lineWidth = Math.max(2, R * 0.06);
   switch (b.mouth) {
     case 'smile': ctx.beginPath(); ctx.arc(mx, my - mw * 0.55, mw, 0.2 * Math.PI, 0.8 * Math.PI); ctx.stroke(); break;
@@ -1044,7 +1048,7 @@ function draw() {
   ctx.restore();
   // виньетка
   const v = ctx.createRadialGradient(W / 2, H * 0.55, Math.min(W, H) * 0.3, W / 2, H * 0.55, Math.max(W, H) * 0.8);
-  v.addColorStop(0, 'rgba(0,0,0,0)'); v.addColorStop(1, `rgba(0,0,0,${0.55 + (1 - lv) * 0.3})`);
+  v.addColorStop(0, 'rgba(0,0,0,0)'); v.addColorStop(1, `rgba(0,0,0,${0.35 + (1 - lv) * 0.45})`);
   ctx.fillStyle = v; ctx.fillRect(0, 0, W, H);
   drawBubble();
 }
