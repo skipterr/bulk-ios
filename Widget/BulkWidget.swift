@@ -86,9 +86,32 @@ struct BulkWidget: Widget {
     }
 }
 
+// Временный виджет для проверки «1 кадр в секунду» и связи с приложением.
+struct BulkProbeWidget: Widget {
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: "BulkProbe", provider: ProbeProvider()) { _ in
+            SpriteProbe()
+                .containerBackground(for: .widget) { Color(white: 0.16) }
+        }
+        .configurationDisplayName("Бульк-тест")
+        .description("Временная проверка для разработки.")
+        .supportedFamilies([.systemMedium])
+    }
+}
+
+struct ProbeProvider: TimelineProvider {
+    struct Entry: TimelineEntry { let date: Date }
+    func placeholder(in context: Context) -> Entry { Entry(date: .now) }
+    func getSnapshot(in context: Context, completion: @escaping (Entry) -> Void) { completion(Entry(date: .now)) }
+    func getTimeline(in context: Context, completion: @escaping (Timeline<Entry>) -> Void) {
+        completion(Timeline(entries: [Entry(date: .now)], policy: .after(.now.addingTimeInterval(3600))))
+    }
+}
+
 @main
 struct BulkWidgetBundle: WidgetBundle {
     var body: some Widget {
         BulkWidget()
+        BulkProbeWidget()
     }
 }

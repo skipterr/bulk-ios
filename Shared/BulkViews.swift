@@ -327,32 +327,43 @@ struct LayeredSprite: View {
     }
 }
 
-/// Временный тестовый блок. Верхний ряд — цветные кадры: A обычный секундомер, B кадр, C секундомер кадрами, D итог.
-/// Нижний ряд — слои: E кадр из слоёв, F секундомер из слоёв (итог запасного способа).
+/// Временный тестовый виджет: в каждой ячейке подпись и проба, всё обрезано по своей рамке.
+/// B — кадр цветным шрифтом, D — секундомер цветным шрифтом,
+/// E — кадр из шрифтов-слоёв, F — секундомер из шрифтов-слоёв, G — общая память с приложением.
 struct SpriteProbe: View {
     var body: some View {
-        VStack(alignment: .trailing, spacing: 2) {
-            HStack(spacing: 3) {
-                Text("A").font(.system(size: 7))
-                Text(LiveSprite.epoch, style: .timer).font(.system(size: 8, design: .monospaced))
-                Text("B").font(.system(size: 7))
-                Text("05").font(.custom("BulkDance", size: 18))
-                Text("C").font(.system(size: 7))
-                Text(LiveSprite.epoch, style: .timer).font(.custom("BulkDance", size: 18)).lineLimit(1).fixedSize()
-                Text("D").font(.system(size: 7))
-                LiveSprite(action: .dance, height: 18)
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 10) {
+                cell("A") {
+                    Text(LiveSprite.epoch, style: .timer)
+                        .font(.system(size: 10, design: .monospaced))
+                        .frame(width: 90, height: 40, alignment: .trailing)
+                        .clipped()
+                }
+                cell("B") {
+                    Text("5").font(.custom("BulkDance", size: 40))
+                        .frame(width: 56, height: 40).clipped()
+                }
+                cell("D") { LiveSprite(action: .dance, height: 40) }
             }
-            HStack(spacing: 3) {
-                Text(SharedGroup.isShared ? "G: связь есть" : "G: связи нет").font(.system(size: 7))
-                Text("E").font(.system(size: 7))
-                LayeredSprite(action: .dance, height: 26, live: false)
-                Text("F").font(.system(size: 7))
-                LayeredSprite(action: .dance, height: 26)
+            HStack(spacing: 10) {
+                cell("E") { LayeredSprite(action: .dance, height: 40, live: false) }
+                cell("F") { LayeredSprite(action: .dance, height: 40) }
+                Text(SharedGroup.isShared ? "G: связь есть" : "G: связи нет")
+                    .font(.system(size: 11, weight: .semibold))
             }
         }
-        .foregroundStyle(Color.white.opacity(0.8))
-        .padding(3)
-        .background(Color.black.opacity(0.3))
+        .foregroundStyle(Color.white)
+        .padding(10)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private func cell<V: View>(_ label: String, @ViewBuilder _ content: () -> V) -> some View {
+        HStack(spacing: 3) {
+            Text(label).font(.system(size: 10, weight: .bold))
+            content()
+                .background(Color.white.opacity(0.08))
+        }
     }
 }
 
