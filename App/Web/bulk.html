@@ -21,13 +21,16 @@
 html,body{height:100%;margin:0}
 body{background:var(--bg);color:var(--ink);font-family:var(--font-ui);overflow:hidden;
   -webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
-.app{height:100%;display:flex;flex-direction:column}
-.stage{position:relative;flex:1;min-height:0}
+[hidden]{display:none!important}
+.app{position:relative;height:100%}
+.stage{position:absolute;inset:0}
 canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:grab}
 .status{position:absolute;top:calc(12px + env(safe-area-inset-top, 0px));left:max(16px, env(safe-area-inset-left, 0px));
   font-family:var(--font-hand);font-size:20px;color:var(--muted);pointer-events:none;letter-spacing:.01em}
 .status b{color:var(--ink);font-weight:400}
-.bar{background:var(--panel);border-top:1px solid var(--line);
+/* панель с кнопками висит поверх комнаты и через ~18 с уезжает вниз */
+.bar{position:absolute;left:0;right:0;bottom:0;transition:transform .6s ease,opacity .6s ease;
+  background:var(--panel);border-top:1px solid var(--line);
   padding-block:10px calc(10px + env(safe-area-inset-bottom, 0px));
   padding-left:max(16px, env(safe-area-inset-left, 0px));padding-right:max(16px, env(safe-area-inset-right, 0px));
   display:flex;flex-direction:column;gap:8px;align-items:center}
@@ -38,6 +41,9 @@ button:hover{background:#1a1c24;border-color:#3a3d4a}
 button:active{transform:scale(.97)}
 button:focus-visible{outline:2px solid var(--glow);outline-offset:2px}
 .hint{font-size:12px;color:var(--muted);text-align:center;text-wrap:balance}
+.bar.hidden{transform:translateY(105%);opacity:0;pointer-events:none}
+.handle{position:absolute;left:50%;bottom:calc(10px + env(safe-area-inset-bottom, 0px));transform:translateX(-50%);
+  padding:6px 22px;font-size:14px;color:var(--muted);background:rgba(17,18,24,.6)}
 </style>
 
 <div class="app">
@@ -54,6 +60,7 @@ button:focus-visible{outline:2px solid var(--glow);outline-offset:2px}
     </div>
     <div class="hint">Тыкай в Булька, хватай и кидай. Лампу тоже можно тыкнуть.</div>
   </div>
+  <button id="barHandle" class="handle" type="button" hidden aria-label="Показать кнопки">︿</button>
 </div>
 
 <script>
@@ -552,6 +559,24 @@ document.getElementById('bLight').onclick = toggleLamp;
 document.getElementById('bShoe').onclick = throwShoe;
 document.getElementById('bSleep').onclick = sendToSleep;
 
+// Панель кнопок прячется через 18 с, «язычок» снизу возвращает её.
+const bar = document.querySelector('.bar');
+const barHandle = document.getElementById('barHandle');
+let barTimer = 0;
+function hideBar() {
+  bar.classList.add('hidden');
+  setTimeout(() => { barHandle.hidden = false; }, 600);
+}
+function showBar() {
+  bar.classList.remove('hidden');
+  barHandle.hidden = true;
+  clearTimeout(barTimer);
+  barTimer = setTimeout(hideBar, 18000);
+}
+barHandle.onclick = showBar;
+bar.addEventListener('pointerdown', showBar);
+showBar();
+
 const ptr = { down: false, x: 0, y: 0, sx: 0, sy: 0, t0: 0, target: null, off: null, hist: [] };
 function evPos(e) { const r = cv.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; }
 function hitBlob(p) {
@@ -808,20 +833,41 @@ function lightAt(x, lv) {
 
 function drawShoe(lv) {
   const la = lightAt(shoe.x, lv);
-  const sw = R * 1.05, sh = R * 0.46;
+  // высокий красно-бело-чёрный кроссовок, носок смотрит вправо
+  const sw = R * 1.1, sh = R * 0.72;
   const air = clamp((FLOOR - shoe.y) / (R * 6), 0, 1);
   ctx.fillStyle = `rgba(0,0,0,${0.45 * (1 - air) * (0.3 + 0.7 * lv)})`;
   ctx.beginPath(); ctx.ellipse(shoe.x, FLOOR + 2, sw * 0.55 * (1 - air * 0.5), R * 0.09, 0, 0, Math.PI * 2); ctx.fill();
   ctx.save(); ctx.translate(shoe.x, shoe.y - sh / 2); ctx.rotate(shoe.rot);
-  ctx.fillStyle = rgb(mix(COL.dark, COL.shoe, la));
+  const red = rgb(mix(COL.dark, [200, 30, 40], la));
+  const white = rgb(mix(COL.dark, [238, 236, 230], la));
+  const black = rgb(mix(COL.dark, [20, 20, 22], la));
+  const soleTop = sh / 2 - sh * 0.2;
   ctx.beginPath();
-  ctx.moveTo(-sw / 2, sh / 2 - sh * 0.25);
-  ctx.lineTo(-sw / 2, -sh / 2); ctx.quadraticCurveTo(-sw * 0.2, -sh * 0.62, -sw * 0.05, -sh * 0.15);
-  ctx.quadraticCurveTo(sw * 0.3, -sh * 0.05, sw / 2, sh * 0.1); ctx.lineTo(sw / 2, sh / 2 - sh * 0.25); ctx.closePath(); ctx.fill();
-  ctx.fillStyle = rgb(mix(COL.dark, COL.sole, la));
-  roundRect(-sw / 2 - 1, sh / 2 - sh * 0.3, sw + 2, sh * 0.3, sh * 0.12); ctx.fill();
-  ctx.strokeStyle = rgb(mix(COL.dark, COL.sole, la * 0.9)); ctx.lineWidth = 1.5;
-  for (let i = 0; i < 3; i++) { const lx = -sw * 0.18 + i * sw * 0.1; ctx.beginPath(); ctx.moveTo(lx, -sh * 0.32 + i * sh * 0.07); ctx.lineTo(lx + sw * 0.07, -sh * 0.2 + i * sh * 0.07); ctx.stroke(); }
+  ctx.moveTo(-sw / 2, soleTop);
+  ctx.lineTo(-sw * 0.46, -sh / 2);
+  ctx.lineTo(-sw * 0.08, -sh / 2 + sh * 0.04);
+  ctx.quadraticCurveTo(sw * 0.02, -sh * 0.05, sw * 0.32, -sh * 0.02);
+  ctx.quadraticCurveTo(sw * 0.52, sh * 0.02, sw / 2, soleTop);
+  ctx.closePath();
+  ctx.save(); ctx.clip();
+  ctx.fillStyle = white; ctx.fillRect(-sw, -sh, sw * 2, sh * 2);
+  ctx.fillStyle = red;
+  ctx.fillRect(-sw, -sh, sw * 0.78, sh * 2);              // пятка
+  ctx.fillRect(sw * 0.2, -sh, sw, sh * 2);                // носок
+  ctx.fillRect(-sw, -sh, sw * 2, sh * 0.22);              // верх голенища
+  ctx.fillStyle = black;                                  // боковая вставка
+  ctx.beginPath();
+  ctx.moveTo(-sw * 0.3, soleTop - sh * 0.05);
+  ctx.quadraticCurveTo(sw * 0.05, soleTop - sh * 0.35, sw * 0.42, -sh * 0.12);
+  ctx.quadraticCurveTo(sw * 0.1, soleTop - sh * 0.15, -sw * 0.3, soleTop - sh * 0.05);
+  ctx.fill();
+  ctx.restore();
+  ctx.strokeStyle = 'rgba(17,17,20,.9)'; ctx.lineWidth = 1.5; ctx.stroke();
+  ctx.fillStyle = white;
+  roundRect(-sw / 2 - 1, soleTop, sw + 2, sh * 0.2, sh * 0.08); ctx.fill(); ctx.stroke();
+  ctx.strokeStyle = white; ctx.lineWidth = 1.5;
+  for (let i = 0; i < 3; i++) { const lx = -sw * 0.04 + i * sw * 0.09; ctx.beginPath(); ctx.moveTo(lx, -sh * 0.2 + i * sh * 0.04); ctx.lineTo(lx + sw * 0.06, -sh * 0.1 + i * sh * 0.04); ctx.stroke(); }
   ctx.restore();
 }
 

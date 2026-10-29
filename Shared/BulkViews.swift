@@ -143,16 +143,44 @@ struct BulbView: View {
     }
 }
 
+// Высокий красно-бело-чёрный кроссовок, носок смотрит вправо.
+struct HighTopShape: Shape {
+    func path(in r: CGRect) -> Path {
+        let w = r.width, h = r.height, soleTop = h * 0.8
+        var p = Path()
+        p.move(to: CGPoint(x: 0, y: soleTop))
+        p.addLine(to: CGPoint(x: w * 0.04, y: 0))
+        p.addLine(to: CGPoint(x: w * 0.42, y: h * 0.04))
+        p.addQuadCurve(to: CGPoint(x: w * 0.82, y: h * 0.48), control: CGPoint(x: w * 0.52, y: h * 0.45))
+        p.addQuadCurve(to: CGPoint(x: w, y: soleTop), control: CGPoint(x: w * 1.02, y: h * 0.52))
+        p.closeSubpath()
+        return p
+    }
+}
+
 struct ShoeView: View {
     var dark: Bool
     var body: some View {
         GeometryReader { g in
             let w = g.size.width, h = g.size.height
+            let k = dark ? 0.4 : 1.0
+            let red = Color(red: 0.78 * k, green: 0.12 * k, blue: 0.16 * k)
+            let white = Color(white: 0.93 * k)
+            let black = Color(white: 0.08)
             ZStack {
-                Capsule().fill(Color(red: dark ? 0.3 : 0.72, green: dark ? 0.1 : 0.24, blue: dark ? 0.1 : 0.23))
-                    .frame(width: w * 0.9, height: h * 0.75).position(x: w * 0.5, y: h * 0.42)
-                Capsule().fill(Color(white: dark ? 0.4 : 0.9))
-                    .frame(width: w, height: h * 0.3).position(x: w * 0.5, y: h * 0.85)
+                ZStack {
+                    white
+                    red.frame(width: w * 0.36).position(x: w * 0.18, y: h / 2)          // пятка
+                    red.frame(width: w * 0.32).position(x: w * 0.88, y: h / 2)          // носок
+                    red.frame(height: h * 0.2).position(x: w / 2, y: h * 0.1)           // верх голенища
+                    Capsule().fill(black).frame(width: w * 0.5, height: h * 0.16)       // боковая вставка
+                        .rotationEffect(.degrees(-18)).position(x: w * 0.55, y: h * 0.58)
+                }
+                .frame(width: w, height: h)
+                .clipShape(HighTopShape())
+                HighTopShape().stroke(black, lineWidth: 1)
+                Capsule().fill(white).overlay(Capsule().stroke(black, lineWidth: 1))
+                    .frame(width: w, height: h * 0.22).position(x: w / 2, y: h * 0.89)
             }
         }
     }
@@ -498,11 +526,12 @@ struct FramePose {
 }
 
 struct BulkScene: View {
-    let action: BulkAction
+    let frame: BulkFrame
     let phrase: String
-    let lightOn: Bool
     let tipsy: Double
-    var frame: Int = 0
+
+    private var action: BulkAction { frame.action }
+    private var lightOn: Bool { frame.light }
 
     var body: some View {
         GeometryReader { geo in
@@ -515,13 +544,16 @@ struct BulkScene: View {
     @ViewBuilder
     private func content(w: CGFloat, h: CGFloat) -> some View {
         let floorY = h * 0.86
-        let lampX = w * 0.68
+        let lampX = w * CGFloat(BulkScript.lampX)
         let bulbY = h * 0.2
         let bodyH = h * 0.38
         let bodyW = bodyH * 0.95
-        let pose = action.pose
-        let bx: CGFloat = pose.lift ? lampX : w * pose.x
-        let bottomY: CGFloat = pose.lift ? bulbY + 10 + bodyH * pose.sy : floorY
+        let f = frame.pose
+        let sx = CGFloat(f.sx), sy = CGFloat(f.sy)
+        let lift = CGFloat(frame.lift)
+        let hangBottom = bulbY + 10 + bodyH * sy
+        let bottomY = floorY - (floorY - hangBottom) * lift + CGFloat(f.dy) * 2
+        let bx = w * CGFloat(frame.x) + CGFloat(f.dx) * 2
         let dark = !lightOn
 
         ZStack {
@@ -529,32 +561,31 @@ struct BulkScene: View {
             room(w: w, h: h, floorY: floorY, lampX: lampX, bulbY: bulbY)
 
             ShoeView(dark: dark)
-                .frame(width: 24, height: 11)
-                .rotationEffect(.degrees(action == .kick ? -35 : 0))
-                .position(x: action == .kick ? w * 0.6 : w * 0.12, y: action == .kick ? h * 0.3 : floorY - 5.5)
+                .frame(width: 26, height: 17)
+                .rotationEffect(.degrees(frame.shoeAir > 0 ? -35 : 0))
+                .position(x: w * CGFloat(frame.shoeX), y: floorY - 8.5 - h * 0.5 * CGFloat(frame.shoeAir))
 
-            Ellipse().fill(Color.black.opacity(pose.lift ? 0.15 : 0.45))
-                .frame(width: bodyW * (pose.lift ? 0.6 : 1), height: 5)
+            Ellipse().fill(Color.black.opacity(0.45 - 0.3 * Double(lift)))
+                .frame(width: bodyW * (1 - 0.4 * lift), height: 5)
                 .position(x: bx, y: floorY + 1)
 
-            let f = action.framePose(frame % action.frameCount, of: action.frameCount, drunk: drunkLook)
             BulkBody(eyes: f.eyes ?? (drunkLook ? .drunk : action.eyes),
                      mouth: f.mouth ?? (drunkLook ? .wavy : action.mouth),
                      dark: dark,
                      angry: action == .mad || action == .swear,
-                     arms: f.arms ?? pose.arms,
-                     holding: action.holding,
+                     arms: f.arms ?? .rest,
+                     holding: frame.holding,
                      blush: min(1, tipsy) * 0.5)
-                .frame(width: bodyW * pose.sx * CGFloat(f.sx), height: bodyH * pose.sy * CGFloat(f.sy))
-                .rotationEffect(.degrees(pose.tilt + f.tilt + (drunkLook ? 8 : 0)), anchor: .bottom)
-                .position(x: bx + CGFloat(f.dx) * 2, y: bottomY - bodyH * pose.sy * CGFloat(f.sy) / 2 + CGFloat(f.dy) * 2)
+                .frame(width: bodyW * sx, height: bodyH * sy)
+                .rotationEffect(.degrees(f.tilt + (drunkLook ? 8 : 0)), anchor: .bottom)
+                .position(x: bx, y: bottomY - bodyH * sy / 2)
 
-            effects(bx: bx, topY: bottomY - bodyH * pose.sy, bodyW: bodyW)
+            effects(bx: bx, topY: bottomY - bodyH * sy, bodyW: bodyW)
 
             if !phrase.isEmpty {
                 bubble(phrase)
-                    .position(x: pose.lift ? lampX - 78 : min(max(bx, 62), w - 62),
-                              y: pose.lift ? h * 0.42 : max(14, bottomY - bodyH * pose.sy - 16))
+                    .position(x: lift > 0.5 ? lampX - 78 : min(max(bx, 62), w - 62),
+                              y: lift > 0.5 ? h * 0.42 : max(14, bottomY - bodyH * sy - 16))
             }
 
             Text("Бульк · \(action.status)")
@@ -591,7 +622,7 @@ struct BulkScene: View {
             Rectangle().fill(Color(white: 0.22)).frame(width: 1.5, height: bulbY).position(x: 30, y: bulbY / 2)
             RoundedRectangle(cornerRadius: 2).fill(Color(white: lightOn ? 0.35 : 0.2))
                 .frame(width: 9, height: 6).position(x: 30, y: bulbY - 5)
-            if action != .inDark {
+            if frame.bulbInLamp {
                 BulbView(on: lightOn, size: 12).position(x: 30, y: bulbY + 3)
             }
         }

@@ -91,6 +91,8 @@ struct BulkState: Codable {
     var tipsyAt: Date = .now
     var pokes: Int = 0
     var lastPoke: Date = .distantPast
+    var x: Double = 0.42
+    var shoeX: Double = 0.12
 
     // Хмель выветривается примерно за полчаса.
     func tipsyNow(_ date: Date = .now) -> Double {
