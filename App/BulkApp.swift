@@ -1,5 +1,5 @@
 import SwiftUI
-import Combine
+import WebKit
 
 @main
 struct BulkApp: App {
@@ -10,37 +10,31 @@ struct BulkApp: App {
     }
 }
 
-// Приложение нужно в основном как «дом» для виджета, а тут — превью Булька.
+// В приложении Бульк полностью живой: внутри та же комната, что в веб-версии,
+// с плавной анимацией, тычками, броском и кнопками.
 struct ContentView: View {
-    @State private var action: BulkAction = .wave
-    @State private var phrase = "я Бульк!"
-    @State private var light = true
-    private let timer = Timer.publish(every: 3, on: .main, in: .common).autoconnect()
-
     var body: some View {
-        VStack(spacing: 20) {
-            Text("Бульк")
-                .font(.system(size: 34, weight: .bold, design: .rounded))
-                .foregroundStyle(.white)
-            BulkScene(action: action, phrase: phrase, lightOn: light, tipsy: 0)
-                .frame(height: 170)
-                .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-            Text("Добавь виджет: зажми пустое место на экране «Домой» → «+» → Бульк.")
-                .font(.system(size: 15, design: .rounded))
-                .multilineTextAlignment(.center)
-                .foregroundStyle(.white.opacity(0.6))
-        }
-        .padding(20)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(red: 0.055, green: 0.055, blue: 0.07))
-        .preferredColorScheme(.dark)
-        .onReceive(timer) { _ in
-            withAnimation(.spring(duration: 0.5)) {
-                let next = BulkBrain.next(after: action, lightOn: light)
-                light = next.lightAfter(light)
-                action = next
-                phrase = next.phrases.randomElement() ?? ""
-            }
-        }
+        BulkWebView()
+            .ignoresSafeArea()
+            .background(Color(red: 0.03, green: 0.03, blue: 0.045))
+            .preferredColorScheme(.dark)
+            .statusBarHidden(false)
     }
+}
+
+struct BulkWebView: UIViewRepresentable {
+    func makeUIView(context: Context) -> WKWebView {
+        let web = WKWebView(frame: .zero, configuration: WKWebViewConfiguration())
+        web.isOpaque = false
+        web.backgroundColor = UIColor(red: 0.03, green: 0.03, blue: 0.045, alpha: 1)
+        web.scrollView.isScrollEnabled = false
+        web.scrollView.bounces = false
+        web.scrollView.contentInsetAdjustmentBehavior = .never
+        if let url = Bundle.main.url(forResource: "bulk", withExtension: "html") {
+            web.loadFileURL(url, allowingReadAccessTo: url.deletingLastPathComponent())
+        }
+        return web
+    }
+
+    func updateUIView(_ uiView: WKWebView, context: Context) {}
 }

@@ -1,0 +1,1073 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Бульк</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Neucha&family=Rubik:wght@400;500&display=swap">
+<style>
+/* Одна сцена во весь экран: тёмная комната на canvas, снизу тонкая панель с кнопками. Тема одна — тёмная, намеренно. */
+:root{
+  --bg:#08080b;
+  --ink:#e6e9f0;
+  --muted:#8b90a0;
+  --panel:#111218;
+  --line:#23252e;
+  --glow:#dfe7ff;
+  --font-ui:"Rubik", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-hand:"Neucha", "Comic Sans MS", cursive;
+  color-scheme:dark;
+}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--font-ui);overflow:hidden;
+  -webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
+.app{height:100%;display:flex;flex-direction:column}
+.stage{position:relative;flex:1;min-height:0}
+canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:grab}
+.status{position:absolute;top:calc(12px + env(safe-area-inset-top, 0px));left:max(16px, env(safe-area-inset-left, 0px));
+  font-family:var(--font-hand);font-size:20px;color:var(--muted);pointer-events:none;letter-spacing:.01em}
+.status b{color:var(--ink);font-weight:400}
+.bar{background:var(--panel);border-top:1px solid var(--line);
+  padding-block:10px calc(10px + env(safe-area-inset-bottom, 0px));
+  padding-left:max(16px, env(safe-area-inset-left, 0px));padding-right:max(16px, env(safe-area-inset-right, 0px));
+  display:flex;flex-direction:column;gap:8px;align-items:center}
+.btns{display:flex;flex-wrap:wrap;gap:8px;justify-content:center}
+button{font:500 14px/1 var(--font-ui);color:var(--ink);background:transparent;border:1px solid var(--line);
+  border-radius:999px;padding:10px 16px;cursor:pointer;transition:background .15s,border-color .15s}
+button:hover{background:#1a1c24;border-color:#3a3d4a}
+button:active{transform:scale(.97)}
+button:focus-visible{outline:2px solid var(--glow);outline-offset:2px}
+.hint{font-size:12px;color:var(--muted);text-align:center;text-wrap:balance}
+</style>
+
+<div class="app">
+  <div class="stage" id="stage">
+    <canvas id="room" aria-label="Тёмная комната, в которой живёт Бульк"></canvas>
+    <div class="status" id="status">Бульк <b>просыпается</b></div>
+  </div>
+  <div class="bar">
+    <div class="btns">
+      <button id="bDrink" type="button">Налить</button>
+      <button id="bLight" type="button">Свет</button>
+      <button id="bShoe" type="button">Кинуть ботинок</button>
+      <button id="bSleep" type="button">Уложить</button>
+    </div>
+    <div class="hint">Тыкай в Булька, хватай и кидай. Лампу тоже можно тыкнуть.</div>
+  </div>
+</div>
+
+<script>
+(() => {
+const stage = document.getElementById('stage');
+const cv = document.getElementById('room');
+const ctx = cv.getContext('2d');
+const statusEl = document.getElementById('status');
+
+let W = 0, H = 0, DPR = 1, FLOOR = 0, R = 40, G = 1200, T = 0;
+let inited = false;
+
+// ---------- утилиты ----------
+const rand = (a, b) => a + Math.random() * (b - a);
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const pick = arr => arr[Math.floor(Math.random() * arr.length)];
+const mix = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+const rgb = (c, a = 1) => `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${a})`;
+const ease = (cur, target, k, dt) => cur + (target - cur) * Math.min(1, k * dt);
+
+const COL = {
+  hi: [150, 154, 166], mid: [78, 81, 92], lo: [36, 38, 46],
+  dark: [6, 6, 9], angry: [190, 50, 56], ink: [22, 25, 36],
+  shoe: [196, 64, 62], sole: [232, 230, 224], glass: [70, 140, 96]
+};
+
+// ---------- фразы ----------
+const P = {
+  hi: ['привет!', 'о, ты тут', 'йоу', 'хай-хай', 'я Бульк!'],
+  poke: ['эй!', 'щекотно!', 'хи-хи', 'ай', 'ну чё?', 'бульк!'],
+  pokeAnnoyed: ['не тыкай', 'ну хватит', 'я ж не кнопка', 'ещё раз и всё'],
+  pokeMad: ['ДА ОТСТАНЬ ТЫ!', 'ну всё, #@%&!', 'щас укушу!'],
+  swear: ['да #@%&!', 'ё-моё...', 'твою ж *****!', 'бл@*!', '%$#@!!', 'вот же ж ****'],
+  burp: ['БУЭЭЭЭ', 'БУЭ!', 'ыыыгх'],
+  burpAfter: ['пардон', 'упс', 'хорошо пошло'],
+  cheers: ['за здоровье!', 'ну, вздрогнули', 'по чуть-чуть'],
+  drunkAfter: ['ик!', 'я тя уважаю', 'я трезвый, честно', 'хорошо сидим'],
+  kick: ['ГОЛ!', 'на!', 'лети!', 'хех'],
+  stare: ['чё смотришь?', 'скучно...', 'а ты кто?', 'мне б зарплату'],
+  unscrew0: ['хе-хе', 'скрип-скрип'],
+  unscrew1: ['свет для слабаков', 'сюрприз!', 'теперь темно, хе', 'моя лампочка'],
+  screwBack: ['ладно, ладно', 'да будет свет!', 'вернул, не ной'],
+  fixed: ['так-то лучше', 'кто выключал?!', 'фух'],
+  dark: ['эй! кто выключил?', 'мне страшно...', 'мама...', 'я ничего не вижу'],
+  lightOn: ['о, свет', 'глаза!', 'ярко...'],
+  bulbMine: ['лампочка-то у меня', 'не выйдет, хе'],
+  held: ['поставь где взял!', 'аааа!', 'я боюсь высоты', 'куда несёшь?'],
+  fly: ['уиииии!', 'аааааа!'],
+  landSoft: ['ещё!', 'весело', 'хе'],
+  landHard: ['ты нормальный?!', 'голова кружится', 'ох...', 'больно вообще-то'],
+  wake: ['ну кто будит...', 'дай поспать!', 'пять минуточек'],
+  hit: ['ай!', 'кто кинул?!', 'за что?!', 'ботинок прилетел...'],
+  busy: ['погоди', 'я занят', 'не сейчас'],
+  handsFull: ['руки заняты', 'я с лампочкой']
+};
+
+const NAMES = {
+  idle: 'залипает', wander: 'гуляет', wave: 'здоровается', jumpy: 'прыгает', sleep: 'спит',
+  swear: 'ругается', burp: 'рыгает', drink: 'выпивает', unscrew: 'ворует лампочку',
+  screwBack: 'вкручивает обратно', fix: 'включает свет', kick: 'пинает ботинок', dance: 'танцует',
+  stare: 'пялится на тебя', held: 'у тебя в руках', flying: 'летит', poked: 'возмущается',
+  wake: 'проснулся злой', scared: 'боится темноты'
+};
+
+// ---------- мир ----------
+const lamp = { x: 0, len: 0, on: true, hasBulb: true, level: 1, flick: 0, swing: 0, swingV: 0, bulbRot: 0 };
+const shoe = { x: 0, y: 0, vx: 0, vy: 0, rot: 0, vr: 0, kickT: 0, hitCD: 0 };
+// пропорции тела: сплюснутый овал
+const RX_K = 1.25, RY_K = 0.78;
+const REST = { l: [-1.02, 0.28], r: [1.02, 0.28] };
+const BULB_POSE = { l: [-0.38, 0.12], r: [0.38, 0.12] };
+const b = {
+  x: 0, y: 0, vx: 0, vy: 0, ground: true, s: 1, sv: 0, sTarget: 1, puff: 0,
+  dir: 1, tilt: 0, tiltT: 0, look: { x: 0, y: 0 }, lookT: { x: 0, y: 0 },
+  blinkT: 0, nextBlink: 2, eyes: 'open', mouth: 'smile', brow: 0, red: 0, redT: 0,
+  blush: 0, tipsy: 0, jitter: 0, asleep: false, holdBottle: false, holdBulb: false, bottleTilt: 0,
+  pose: { l: REST.l.slice(), r: REST.r.slice() }, poseT: REST,
+  grabbed: false, hang: false, bouncy: false, impactMax: 0, walking: false, hopT: 0
+};
+let pokes = 0, shakeAmt = 0;
+const parts = [];
+let bubble = null;
+
+function bulbPos() {
+  return { x: lamp.x + Math.sin(lamp.swing) * lamp.len, y: Math.cos(lamp.swing) * lamp.len, r: R * 0.3 };
+}
+function dims() {
+  const sy = b.s, sx = (1 / Math.sqrt(b.s)) * (1 + b.puff * 0.1);
+  return { rx: R * RX_K * sx, ry: R * RY_K * sy };
+}
+
+function resize() {
+  const r = stage.getBoundingClientRect();
+  W = Math.max(200, r.width); H = Math.max(240, r.height);
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
+  R = clamp(Math.min(W, H * 0.9) * 0.085, 26, 60);
+  G = R * 32;
+  FLOOR = H * 0.8;
+  lamp.x = W * 0.64;
+  lamp.len = clamp(FLOOR - R * 6.4, H * 0.16, H * 0.38);
+  if (!inited) {
+    b.x = W * 0.38; b.y = FLOOR;
+    shoe.x = W * 0.16 + R; shoe.y = FLOOR;
+    inited = true;
+  } else {
+    b.x = clamp(b.x, R, W - R); if (b.ground || b.y > FLOOR) b.y = FLOOR;
+    shoe.x = clamp(shoe.x, R, W - R); shoe.y = Math.min(shoe.y, FLOOR);
+  }
+}
+new ResizeObserver(resize).observe(stage);
+
+// ---------- эффекты ----------
+function say(text, dur = 1.9) { bubble = { text, life: dur, max: dur }; }
+function shake(a) { shakeAmt = Math.max(shakeAmt, a); }
+function spawn(p) { parts.push(Object.assign({ vx: 0, vy: 0, g: 0, life: 1, max: 1, size: R * 0.4, rot: 0, vr: 0 }, p)); }
+function headTop() { const { ry } = dims(); return { x: b.x, y: b.y - ry * 2.15 }; }
+
+function hop(v) {
+  if (!b.ground) return;
+  b.vy = -v; b.ground = false; b.sv += v / (R * 4.5);
+}
+
+function walk(tx, dt) {
+  const d = tx - b.x;
+  if (Math.abs(d) < R * 0.25) return true;
+  b.dir = Math.sign(d);
+  b.walking = true;
+  const sp = R * 2.6 * (b.tipsy > 0.5 ? 0.75 : 1);
+  if (b.ground) {
+    b.vx = b.dir * sp * (b.tipsy > 0.5 ? 0.7 + 0.6 * Math.abs(Math.sin(T * 3)) : 1);
+    b.hopT -= dt;
+    if (b.hopT <= 0) { hop(R * 4.2); b.hopT = 0.3; }
+  }
+  b.tiltT += b.dir * 0.08;
+  return false;
+}
+
+// ---------- действия ----------
+let act = null, lastName = '';
+function setAct(name) {
+  if (act && act.end) act.end();
+  act = ACT[name]();
+  act.name = name; act.t = 0;
+  if (!['poked', 'held', 'flying', 'wake', 'scared'].includes(name)) lastName = name;
+  const n = NAMES[name] || name;
+  statusEl.innerHTML = 'Бульк <b>' + n + '</b>' + (b.tipsy > 0.5 ? ' · навеселе' : '');
+}
+function free() { return !b.grabbed && !b.hang && !(act && (act.name === 'flying' || act.kind)); }
+function shoeResting() { return shoe.y >= FLOOR - 0.5 && shoe.vy === 0 && Math.abs(shoe.vx) < R * 0.3; }
+
+function lampJob(kind) {
+  let ph = 'walk', p = 0, away = null;
+  return {
+    kind,
+    update(dt) {
+      const bp = bulbPos();
+      const hangY = bp.y + bp.r * 0.7 + R * RY_K * 1.1 * 2.12;
+      if (ph === 'walk') {
+        if (kind === 'fix' && lamp.on) { say(pick(P.lightOn)); return true; }
+        b.lookT = { x: Math.sign(bp.x - b.x) * 0.5, y: -0.8 };
+        if (kind === 'fix') { b.eyes = 'wide'; b.mouth = 'flat'; }
+        if (walk(bp.x, dt) || this.t > 7) { ph = 'crouch'; p = this.t; b.vx = 0; }
+      } else if (ph === 'crouch') {
+        b.sTarget = 0.74; b.lookT = { x: 0, y: -1 }; b.mouth = 'flat';
+        b.poseT = { l: [-0.85, 0.3], r: [0.85, 0.3] };
+        if (this.t - p > 0.35 && b.ground) {
+          const h = Math.max(R, FLOOR - hangY);
+          b.vy = -Math.sqrt(2 * G * h) * 1.04; b.ground = false; b.sv += 4;
+          ph = 'jump'; p = this.t;
+        }
+      } else if (ph === 'jump') {
+        b.poseT = { l: [-0.42, -1.22], r: [0.42, -1.22] };
+        b.mouth = 'o'; b.lookT = { x: 0, y: -1 };
+        b.x = ease(b.x, bp.x, 8, dt);
+        if (b.y <= hangY + R * 0.1 || (b.vy > -R * 1.2 && this.t - p > 0.15)) {
+          b.hang = true; b.vx = 0; b.vy = 0; lamp.swingV += rand(-1, 1) * 0.9;
+          ph = 'hang'; p = this.t;
+          if (kind === 'unscrew') say(pick(P.unscrew0), 1.5);
+        }
+      } else if (ph === 'hang') {
+        const k = this.t - p;
+        b.poseT = { l: [-0.38, -1.25], r: [0.38, -1.25] };
+        b.lookT = { x: 0, y: -1 }; b.mouth = kind === 'unscrew' ? 'grin' : 'flat';
+        b.sTarget = 1.1;
+        const need = kind === 'unscrew' ? 1.9 : kind === 'screwBack' ? 1.4 : 0.5;
+        if (kind !== 'fix') { b.tiltT = Math.sin(k * 13) * 0.18; lamp.bulbRot += dt * 9; lamp.flick = kind === 'unscrew' ? 0.2 : 0.1; }
+        if (k > need) {
+          if (kind === 'unscrew') {
+            lamp.hasBulb = false; lamp.on = false; b.holdBulb = true; lamp.flick = 0;
+            for (let i = 0; i < 10; i++) spawn({ type: 'spark', x: bp.x, y: bp.y - bp.r, vx: rand(-1, 1) * R * 5, vy: rand(-1, 0.4) * R * 5, g: G * 0.6, life: 0.5, max: 0.5 });
+          } else if (kind === 'screwBack') {
+            lamp.hasBulb = true; lamp.on = true; b.holdBulb = false; lamp.flick = 0.4;
+          } else { lamp.on = true; lamp.flick = 0.3; }
+          b.hang = false; b.ground = false; b.vy = R; ph = 'drop'; p = this.t;
+        }
+      } else if (ph === 'drop') {
+        b.mouth = 'o';
+        if (b.ground) {
+          ph = 'after'; p = this.t;
+          say(pick(kind === 'unscrew' ? P.unscrew1 : kind === 'screwBack' ? P.screwBack : P.fixed));
+        }
+      } else {
+        const k = this.t - p;
+        b.eyes = 'happy'; b.mouth = 'grin';
+        if (kind === 'unscrew') {
+          if (away === null) away = clamp(bp.x + (bp.x > W / 2 ? -1 : 1) * R * 4, R * 1.5, W - R * 1.5);
+          if (k > 0.6) walk(away, dt);
+          return k > 4.2;
+        }
+        return k > 1.6;
+      }
+      return false;
+    },
+    end() { b.hang = false; lamp.flick = 0; }
+  };
+}
+
+const ACT = {
+  idle() {
+    const dur = rand(1.4, 4); let lt = 0, lk = { x: 0, y: 0 };
+    return { update(dt) {
+      lt -= dt;
+      if (lt <= 0) { lk = { x: rand(-1, 1), y: rand(-0.5, 0.6) }; lt = rand(0.6, 1.8); }
+      b.lookT = lk;
+      if (b.tipsy > 0.4) {
+        b.eyes = 'drunk'; b.mouth = 'wavy';
+        if (Math.random() < dt * 0.6) { hop(R * 3); spawn({ type: 'text', text: 'ик', x: b.x + R * 0.8, y: headTop().y, vy: -R * 1.5, life: 1, max: 1 }); }
+      }
+      return this.t > dur;
+    } };
+  },
+  wander() {
+    const tx = rand(R * 1.5, W - R * 1.5);
+    return { update(dt) {
+      b.lookT = { x: Math.sign(tx - b.x), y: 0.1 };
+      if (b.tipsy > 0.4) { b.eyes = 'drunk'; b.mouth = 'wavy'; }
+      return walk(tx, dt) || this.t > 6;
+    } };
+  },
+  wave() {
+    say(pick(P.hi));
+    return { update() {
+      b.lookT = { x: 0, y: 0.3 }; b.mouth = 'grin'; if (this.t > 1.3) b.eyes = 'happy';
+      b.poseT = { l: REST.l, r: [1.12 + 0.14 * Math.sin(this.t * 14), -0.95] };
+      return this.t > 2.3;
+    } };
+  },
+  jumpy() {
+    let h = 0;
+    if (Math.random() < 0.5) say('уиии!', 1.2);
+    return { update(dt) {
+      h -= dt;
+      b.eyes = 'happy'; b.mouth = b.ground ? 'grin' : 'o';
+      b.poseT = b.ground ? REST : { l: [-1.1, -0.7], r: [1.1, -0.7] };
+      if (b.ground && h <= 0 && this.t < 2.2) { hop(R * rand(9, 12)); h = 0.55; }
+      return this.t > 2.6 && b.ground;
+    } };
+  },
+  sleep() {
+    const dur = rand(7, 13); let z = 0.4;
+    return { update(dt) {
+      b.asleep = true; b.eyes = 'closed'; b.mouth = 'sleep';
+      b.sTarget = 0.86 + 0.04 * Math.sin(this.t * 2.2);
+      b.poseT = { l: [-0.98, 0.45], r: [0.98, 0.45] };
+      z -= dt;
+      if (z <= 0) { z = 1.1; const ht = headTop(); spawn({ type: 'text', text: 'z', x: ht.x + R * 0.6, y: ht.y + R * 0.3, vx: R * 0.6, vy: -R * 1.1, life: 2.2, max: 2.2, size: R * 0.5, grow: 1 }); }
+      if (this.t > dur) { b.asleep = false; say('ааах, выспался', 1.6); return true; }
+      return false;
+    }, end() { b.asleep = false; } };
+  },
+  swear() {
+    let st = 0;
+    say(pick(P.swear), 2.2); shake(R * 0.08);
+    return { update(dt) {
+      b.redT = 1; b.brow = 1; b.eyes = 'angry'; b.mouth = (Math.floor(this.t * 6) % 2) ? 'wide' : 'frown';
+      st -= dt;
+      if (b.ground && this.t < 1.8 && st <= 0) { hop(R * 3.2); st = 0.32; }
+      const w = Math.sin(this.t * 20) * 0.3;
+      b.poseT = { l: [-1.15, -0.3 + w], r: [1.15, -0.3 - w] };
+      return this.t > 2.6;
+    } };
+  },
+  burp() {
+    let s1 = false, s2 = false;
+    return { update() {
+      const t = this.t;
+      if (t < 0.9) { b.mouth = 'puff'; b.puff = t / 0.9; b.sTarget = 1 - 0.1 * (t / 0.9); b.lookT = { x: 0, y: 0.2 }; }
+      else if (t < 1.8) {
+        if (!s1) {
+          s1 = true; say(pick(P.burp), 1.5); shake(R * 0.18); b.sv += 3;
+          const ht = headTop();
+          for (let i = 0; i < 9; i++) spawn({ type: 'puff', x: b.x + b.dir * R * 0.3, y: ht.y + R * 1.3, vx: rand(-1, 1) * R * 2.5, vy: rand(-2, -0.5) * R, life: 1.2, max: 1.2, size: rand(0.25, 0.5) * R });
+        }
+        b.puff = 0; b.mouth = 'wide'; b.eyes = 'closed';
+      } else {
+        b.mouth = 'smile'; b.eyes = 'happy';
+        if (!s2) { s2 = true; if (Math.random() < 0.6) say(pick(P.burpAfter), 1.2); }
+      }
+      return t > 3;
+    }, end() { b.puff = 0; } };
+  },
+  drink() {
+    let gl = 0, done = false;
+    say(pick(P.cheers), 1.4);
+    return { update(dt) {
+      const t = this.t;
+      if (t < 0.8) { b.holdBottle = true; b.poseT = { l: REST.l, r: [1.15, -0.15] }; b.bottleTilt = 0; b.mouth = 'grin'; }
+      else if (t < 2.4) {
+        b.holdBottle = true;
+        b.poseT = { l: REST.l, r: [0.42, -0.42] }; b.bottleTilt = -2.1;
+        b.mouth = 'o'; b.eyes = 'closed'; b.lookT = { x: 0, y: -0.7 }; b.tiltT = -0.14;
+        gl -= dt;
+        if (gl <= 0) { gl = 0.4; spawn({ type: 'text', text: 'буль', x: b.x - R * 0.9, y: headTop().y + R * 0.4, vy: -R * 1.2, life: 0.9, max: 0.9, size: R * 0.32 }); }
+      } else if (!done) {
+        done = true; b.holdBottle = false;
+        const hx = b.x + R * 0.6;
+        spawn({ type: 'bottle', x: hx, y: b.y - R * 1.2, vx: R * rand(3, 6) * (b.x < W / 2 ? 1 : -1), vy: -R * 7, g: G, vr: 9, life: 1.3, max: 1.3 });
+        b.tipsy = Math.min(1.6, b.tipsy + 0.55);
+        say(pick(P.drunkAfter));
+      } else { b.eyes = 'happy'; b.mouth = 'grin'; b.blush = Math.max(b.blush, 0.7); }
+      return t > 3.5;
+    }, end() { b.holdBottle = false; } };
+  },
+  kick() {
+    const dir = shoe.x < W / 2 ? 1 : -1; let ph = 0, p = 0;
+    return { update(dt) {
+      if (ph === 0) {
+        const tx = clamp(shoe.x - dir * R * 1.3, R, W - R);
+        b.lookT = { x: dir * 0.6, y: 0.5 };
+        if (!shoeResting()) return true;
+        if (walk(tx, dt)) { ph = 1; p = this.t; b.dir = dir; b.vx = 0; }
+        else if (this.t > 7) return true;
+      } else if (ph === 1) {
+        b.tiltT = -dir * 0.28; b.mouth = 'flat'; b.brow = 0.5; b.lookT = { x: dir, y: 0.6 };
+        if (this.t - p > 0.4) {
+          ph = 2; p = this.t;
+          shoe.vx = dir * R * rand(11, 17); shoe.vy = -R * rand(9, 14); shoe.vr = dir * rand(10, 18); shoe.kickT = 0.4;
+          b.sv += 2; b.vx = dir * R * 1.6; shake(R * 0.06);
+          say(pick(P.kick), 1.4);
+        }
+      } else {
+        b.tiltT = dir * 0.15; b.mouth = 'grin'; b.eyes = 'happy'; b.lookT = { x: dir, y: -0.3 };
+        if (this.t - p > 1.5) return true;
+      }
+      return false;
+    } };
+  },
+  dance() {
+    const dur = rand(3.5, 5.5); let h = 0, n = 0;
+    return { update(dt) {
+      const t = this.t;
+      b.eyes = 'happy'; b.mouth = (Math.floor(t * 2.5) % 2) ? 'grin' : 'o';
+      b.tiltT = Math.sin(t * Math.PI * 2.5) * 0.22;
+      const w = Math.sin(t * 15) * 0.4;
+      b.poseT = { l: [-1.1, -0.5 + w], r: [1.1, -0.5 - w] };
+      b.vx = Math.sin(t * Math.PI * 1.25) * R * 1.8; b.walking = true;
+      h -= dt; n -= dt;
+      if (b.ground && h <= 0) { hop(R * 4); h = 0.4; }
+      if (n <= 0) { n = 0.45; const ht = headTop(); spawn({ type: 'text', text: pick(['♪', '♫']), x: ht.x + rand(-1, 1) * R, y: ht.y, vx: rand(-0.5, 0.5) * R, vy: -R * 1.4, life: 1.6, max: 1.6, size: R * 0.5 }); }
+      return t > dur;
+    } };
+  },
+  stare() {
+    say(pick(P.stare), 2.2);
+    return { update() {
+      b.lookT = { x: 0, y: 0.15 }; b.eyes = 'wide'; b.mouth = 'flat'; b.sTarget = 1.04;
+      return this.t > 2.8;
+    } };
+  },
+  scared() {
+    say(pick(P.dark), 2);
+    return { update() {
+      b.eyes = 'wide'; b.mouth = 'frown'; b.jitter = 1;
+      b.poseT = { l: [-0.55, -0.15], r: [0.55, -0.15] };
+      return this.t > 2.6;
+    } };
+  },
+  poked() {
+    const mad = pokes > 2.5;
+    say(pick(mad ? P.pokeAnnoyed : P.poke), 1.3);
+    return { update() {
+      b.eyes = this.t < 0.25 ? 'closed' : (mad ? 'angry' : 'open'); b.brow = mad ? 0.7 : 0;
+      b.mouth = mad ? 'frown' : (this.t < 0.5 ? 'o' : 'smile'); b.lookT = { x: 0, y: 0.3 };
+      if (mad) b.redT = 0.4;
+      return this.t > 1.1;
+    } };
+  },
+  wake() {
+    say(pick(P.wake), 2); b.sv += 2.5;
+    return { update() {
+      b.eyes = this.t < 0.4 ? 'wide' : 'sleepy'; b.brow = 0.8; b.mouth = 'frown'; b.redT = 0.35;
+      return this.t > 2.3;
+    } };
+  },
+  held() {
+    let s = false;
+    return { update() {
+      b.eyes = 'wide'; b.mouth = 'o';
+      const w = Math.sin(this.t * 12) * 0.2;
+      b.poseT = { l: [-1.08, -0.6 + w], r: [1.08, -0.6 - w] };
+      if (!s && this.t > 0.5) { s = true; say(pick(P.held), 1.8); }
+      return false;
+    } };
+  },
+  flying() {
+    let still = 0, ph = 0, p = 0, dizzy = false, said = false;
+    b.impactMax = 0;
+    return { update(dt) {
+      if (!ph) {
+        b.eyes = 'wide'; b.mouth = 'o';
+        b.tiltT = clamp(b.vx / (R * 40), -0.6, 0.6);
+        still = b.ground ? still + dt : 0;
+        if (still > 0.15) { ph = 1; p = this.t; dizzy = b.impactMax > R * 17; }
+        return false;
+      }
+      const k = this.t - p;
+      if (dizzy && k < 2.2) {
+        b.eyes = 'dizzy'; b.mouth = 'wavy';
+        if (Math.random() < dt * 6) { const ht = headTop(); spawn({ type: 'star', x: ht.x + rand(-1, 1) * R, y: ht.y - R * 0.1, vy: -R * 0.6, vx: rand(-1, 1) * R, life: 0.9, max: 0.9, size: R * 0.22, vr: 4 }); }
+        return false;
+      }
+      if (!said) { said = true; say(pick(dizzy ? P.landHard : P.landSoft)); }
+      b.eyes = dizzy ? 'sleepy' : 'happy'; b.mouth = dizzy ? 'frown' : 'grin';
+      return k > (dizzy ? 3.8 : 1.6);
+    }, end() { b.bouncy = false; } };
+  },
+  unscrew: () => lampJob('unscrew'),
+  screwBack: () => lampJob('screwBack'),
+  fix: () => lampJob('fix')
+};
+
+function brain() {
+  if (!lamp.hasBulb) { setAct(lastName !== 'idle' && Math.random() < 0.5 ? 'idle' : 'screwBack'); return; }
+  if (!lamp.on) { setAct('fix'); return; }
+  if (lastName && lastName !== 'idle' && Math.random() < 0.45) { setAct('idle'); return; }
+  const w = {
+    idle: 1, wander: 3, wave: 1.2, jumpy: 1.3, sleep: 0.9, swear: 1, burp: 1.1,
+    drink: b.tipsy > 1.1 ? 0.2 : 1.1, unscrew: 1.1, kick: shoeResting() ? 1.6 : 0, dance: 1.2, stare: 0.9
+  };
+  delete w[lastName];
+  let sum = 0; for (const k in w) sum += w[k];
+  let r = Math.random() * sum;
+  for (const k in w) { r -= w[k]; if (r <= 0) { setAct(k); return; } }
+  setAct('idle');
+}
+
+// ---------- взаимодействие ----------
+function poke() {
+  if (b.grabbed || b.hang) return;
+  if (b.asleep) { setAct('wake'); return; }
+  pokes += 1; b.sv -= 2.8; if (b.ground) b.vx += rand(-1, 1) * R;
+  if (pokes >= 5) { pokes = 1.5; setAct('swear'); say(pick(P.pokeMad), 2); return; }
+  if (act && act.kind) { say(pick(P.poke), 1); return; }
+  setAct('poked');
+}
+function toggleLamp() {
+  if (!lamp.hasBulb) { say(pick(P.bulbMine)); return; }
+  lamp.on = !lamp.on; lamp.flick = 0.12;
+  if (!lamp.on) {
+    if (b.asleep || !free()) return;
+    setAct('scared');
+  } else {
+    if (b.asleep) setAct('wake');
+    else if (act && act.name === 'scared') { setAct('idle'); say('фух...', 1.2); }
+    else if (free()) say(pick(P.lightOn), 1.2);
+  }
+}
+function throwShoe() {
+  if (!shoeResting() && shoe.y < FLOOR - 1) return;
+  const d = Math.sign(b.x - shoe.x) || 1;
+  shoe.vx = d * clamp(Math.abs(b.x - shoe.x) * 2.2, R * 6, R * 16); shoe.vy = -R * 11; shoe.vr = d * 14; shoe.kickT = 0;
+}
+function giveDrink() {
+  if (!free()) { say(pick(P.busy), 1); return; }
+  if (b.holdBulb) { say(pick(P.handsFull), 1.2); return; }
+  if (b.asleep) { setAct('wake'); return; }
+  setAct('drink');
+}
+function sendToSleep() {
+  if (!free()) { say(pick(P.busy), 1); return; }
+  if (b.asleep) { setAct('wake'); return; }
+  setAct('sleep');
+}
+document.getElementById('bDrink').onclick = giveDrink;
+document.getElementById('bLight').onclick = toggleLamp;
+document.getElementById('bShoe').onclick = throwShoe;
+document.getElementById('bSleep').onclick = sendToSleep;
+
+const ptr = { down: false, x: 0, y: 0, sx: 0, sy: 0, t0: 0, target: null, off: null, hist: [] };
+function evPos(e) { const r = cv.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; }
+function hitBlob(p) {
+  const { rx, ry } = dims();
+  const dx = (p.x - b.x) / (rx * 1.15), dy = (p.y - (b.y - ry)) / (ry * 1.15);
+  return dx * dx + dy * dy < 1;
+}
+function hitLamp(p) {
+  const bp = bulbPos();
+  if (Math.hypot(p.x - bp.x, p.y - bp.y) < R * 0.9) return true;
+  return Math.abs(p.x - bp.x) < R * 0.4 && p.y < bp.y;
+}
+function hitShoe(p) { return Math.abs(p.x - shoe.x) < R * 0.8 && p.y > shoe.y - R * 0.9 && p.y < shoe.y + R * 0.3; }
+
+function startGrab() {
+  if (b.grabbed) return;
+  if (b.asleep) b.asleep = false;
+  b.grabbed = true; b.hang = false; b.ground = false; b.bouncy = false;
+  ptr.off = { x: b.x - ptr.x, y: b.y - ptr.y };
+  setAct('held');
+}
+cv.addEventListener('pointerdown', e => {
+  const p = evPos(e);
+  try { cv.setPointerCapture(e.pointerId); } catch (_) {}
+  Object.assign(ptr, { down: true, x: p.x, y: p.y, sx: p.x, sy: p.y, t0: performance.now(), hist: [{ x: p.x, y: p.y, t: performance.now() }] });
+  ptr.target = hitBlob(p) ? 'blob' : hitLamp(p) ? 'lamp' : hitShoe(p) ? 'shoe' : 'room';
+});
+cv.addEventListener('pointermove', e => {
+  if (!ptr.down) return;
+  const p = evPos(e); ptr.x = p.x; ptr.y = p.y;
+  const now = performance.now();
+  ptr.hist.push({ x: p.x, y: p.y, t: now });
+  while (ptr.hist.length > 2 && now - ptr.hist[0].t > 100) ptr.hist.shift();
+  if (ptr.target === 'blob' && !b.grabbed && Math.hypot(p.x - ptr.sx, p.y - ptr.sy) > 8) startGrab();
+});
+function endPtr() {
+  if (!ptr.down) return;
+  ptr.down = false;
+  if (b.grabbed) {
+    b.grabbed = false;
+    const h = ptr.hist, a = h[0], z = h[h.length - 1];
+    const dt = Math.max(0.016, (z.t - a.t) / 1000);
+    let vx = (z.x - a.x) / dt, vy = (z.y - a.y) / dt;
+    const sp = Math.hypot(vx, vy), mx = R * 45;
+    if (sp > mx) { vx *= mx / sp; vy *= mx / sp; }
+    b.vx = vx; b.vy = vy; b.ground = false; b.bouncy = true;
+    setAct('flying');
+    if (sp > R * 14) say(pick(P.fly), 1.2);
+    return;
+  }
+  const moved = Math.hypot(ptr.x - ptr.sx, ptr.y - ptr.sy);
+  if (moved > 10) return;
+  if (ptr.target === 'blob') poke();
+  else if (ptr.target === 'lamp') toggleLamp();
+  else if (ptr.target === 'shoe') throwShoe();
+  else if (free()) { b.lookT = { x: clamp((ptr.x - b.x) / (R * 4), -1, 1), y: clamp((ptr.y - b.y + R) / (R * 4), -1, 1) }; spawn({ type: 'ring', x: ptr.x, y: ptr.y, life: 0.45, max: 0.45 }); }
+}
+cv.addEventListener('pointerup', endPtr);
+cv.addEventListener('pointercancel', endPtr);
+
+// ---------- физика ----------
+function physics(dt) {
+  const { rx, ry } = dims();
+  if (b.grabbed) {
+    const tx = ptr.x + ptr.off.x, ty = Math.min(FLOOR, ptr.y + ptr.off.y);
+    const nx = ease(b.x, tx, 18, dt), ny = ease(b.y, ty, 18, dt);
+    b.vx = (nx - b.x) / dt; b.vy = (ny - b.y) / dt; b.x = nx; b.y = ny;
+    b.sTarget = clamp(1.18 + b.vy / (R * 60), 0.9, 1.45);
+    b.tiltT = clamp(-b.vx / (R * 50), -0.5, 0.5);
+  } else if (b.hang) {
+    const bp = bulbPos();
+    b.x = bp.x; b.y = ease(b.y, bp.y + bp.r * 0.7 + ry * 2.12, 15, dt);
+    b.vx = 0; b.vy = 0;
+    lamp.swingV += -b.tiltT * 0.02;
+  } else {
+    if (!b.ground) {
+      b.vy += G * dt; b.y += b.vy * dt;
+      if (b.y - ry * 2.12 < 0 && b.vy < 0) b.vy = -b.vy * 0.4;
+      if (b.y >= FLOOR) {
+        const imp = b.vy; b.y = FLOOR; b.impactMax = Math.max(b.impactMax, imp);
+        if (b.bouncy && imp > R * 9) {
+          b.vy = -imp * 0.38; b.vx *= 0.7; b.sv -= Math.min(6, imp / (R * 5)); shake(Math.min(R * 0.3, imp / 80));
+        } else {
+          b.vy = 0; b.ground = true; b.sv -= Math.min(5, imp / (R * 7));
+          if (imp > R * 9) shake(R * 0.05);
+        }
+      }
+    }
+    b.x += b.vx * dt;
+    if (b.ground && !b.walking) b.vx *= Math.exp(-10 * dt);
+    if (b.x < rx) { b.x = rx; b.vx = b.bouncy ? Math.abs(b.vx) * 0.6 : 0; if (b.bouncy) b.sv -= 1.5; }
+    if (b.x > W - rx) { b.x = W - rx; b.vx = b.bouncy ? -Math.abs(b.vx) * 0.6 : 0; if (b.bouncy) b.sv -= 1.5; }
+  }
+  const acc = (b.sTarget - b.s) * 220 - b.sv * 14;
+  b.sv += acc * dt; b.s = clamp(b.s + b.sv * dt, 0.55, 1.5);
+
+  // ботинок
+  shoe.kickT -= dt; shoe.hitCD -= dt;
+  const half = R * 0.5;
+  if (shoe.y < FLOOR || shoe.vy < 0) {
+    shoe.vy += G * dt; shoe.y += shoe.vy * dt;
+    if (shoe.y >= FLOOR) {
+      shoe.y = FLOOR;
+      if (shoe.vy > R * 3) { shoe.vy = -shoe.vy * 0.42; shoe.vr *= 0.6; shoe.vx *= 0.86; }
+      else shoe.vy = 0;
+    }
+    if (shoe.y < R * 0.5) { shoe.y = R * 0.5; shoe.vy = Math.abs(shoe.vy) * 0.5; }
+  }
+  shoe.x += shoe.vx * dt; shoe.rot += shoe.vr * dt;
+  if (shoe.y >= FLOOR && shoe.vy === 0) {
+    shoe.vx *= Math.exp(-5 * dt); shoe.vr *= Math.exp(-8 * dt);
+    const target = Math.round(shoe.rot / Math.PI) * Math.PI;
+    shoe.rot = ease(shoe.rot, target, 8, dt);
+  }
+  if (shoe.x < half) { shoe.x = half; shoe.vx = Math.abs(shoe.vx) * 0.6; shoe.vr *= -0.6; }
+  if (shoe.x > W - half) { shoe.x = W - half; shoe.vx = -Math.abs(shoe.vx) * 0.6; shoe.vr *= -0.6; }
+  // ботинок попал в Булька
+  const ssp = Math.hypot(shoe.vx, shoe.vy);
+  if (ssp > R * 4 && shoe.hitCD <= 0 && shoe.kickT <= 0 && !b.grabbed) {
+    const dx = (shoe.x - b.x) / (rx + R * 0.35), dy = (shoe.y - R * 0.25 - (b.y - ry)) / (ry + R * 0.2);
+    if (dx * dx + dy * dy < 1) {
+      shoe.hitCD = 0.6; shoe.vx = -shoe.vx * 0.45; shoe.vy = -Math.abs(shoe.vy) * 0.4 - R * 4;
+      b.sv -= 3; shake(R * 0.08);
+      if (!b.hang) { if (b.ground) b.vx += Math.sign(b.x - shoe.x) * R * 3; }
+      pokes += 1.5;
+      if (b.asleep) setAct('wake');
+      else if (free()) { setAct('poked'); say(pick(P.hit), 1.5); b.redT = 0.6; }
+      else say(pick(P.hit), 1.2);
+    }
+  }
+
+  // лампа качается
+  lamp.swingV += (-lamp.swing * 3.2 - lamp.swingV * 0.7) * dt;
+  lamp.swing = clamp(lamp.swing + lamp.swingV * dt, -0.5, 0.5);
+  const tgt = lamp.on && lamp.hasBulb ? 1 : 0;
+  lamp.level = ease(lamp.level, tgt, tgt > lamp.level ? 5 : 10, dt);
+  lamp.flick = Math.max(0, lamp.flick - dt);
+}
+
+// ---------- кадр ----------
+function resetFrame() {
+  b.eyes = 'open'; b.mouth = 'smile'; b.brow = 0; b.redT = 0; b.sTarget = 1; b.jitter = 0; b.walking = false;
+  b.poseT = b.holdBulb ? BULB_POSE : REST;
+  b.tiltT = b.tipsy > 0.4 ? Math.sin(T * 2.1) * 0.09 * b.tipsy : 0;
+}
+
+function update(dt) {
+  T += dt;
+  resetFrame();
+  if (ptr.down && ptr.target === 'blob' && !b.grabbed && performance.now() - ptr.t0 > 230) startGrab();
+  if (!act) brain();
+  if (act) { act.t += dt; if (act.update(dt)) { if (act.end) act.end(); act = null; } }
+  physics(dt);
+
+  b.tilt = ease(b.tilt, b.tiltT, 10, dt);
+  b.look.x = ease(b.look.x, b.lookT.x, 6, dt); b.look.y = ease(b.look.y, b.lookT.y, 6, dt);
+  b.red = ease(b.red, b.redT, 4, dt);
+  b.blush = ease(b.blush, Math.min(1, b.tipsy), 2, dt);
+  b.tipsy = Math.max(0, b.tipsy - dt * 0.018);
+  pokes = Math.max(0, pokes - dt * 0.25);
+  for (const k of ['l', 'r']) for (let i = 0; i < 2; i++) b.pose[k][i] = ease(b.pose[k][i], b.poseT[k][i], 12, dt);
+  b.nextBlink -= dt;
+  if (b.nextBlink <= 0) { b.blinkT = 0.13; b.nextBlink = rand(1.8, 4.5); }
+  b.blinkT -= dt;
+  shakeAmt = Math.max(0, shakeAmt - dt * R * 1.5);
+
+  for (let i = parts.length - 1; i >= 0; i--) {
+    const p = parts[i];
+    p.vy += p.g * dt; p.x += p.vx * dt; p.y += p.vy * dt; p.rot += p.vr * dt; p.life -= dt;
+    if (p.life <= 0) parts.splice(i, 1);
+  }
+  if (bubble) { bubble.life -= dt; if (bubble.life <= 0) bubble = null; }
+}
+
+// ---------- рисование ----------
+function lightLevel() {
+  let lv = lamp.level;
+  if (lamp.flick > 0 && lamp.hasBulb) lv *= Math.random() > 0.35 ? 1 : 0.25;
+  return lv;
+}
+
+function drawRoom(lv) {
+  const bp = bulbPos();
+  ctx.fillStyle = '#060609'; ctx.fillRect(0, 0, W, H);
+  const wall = ctx.createLinearGradient(0, 0, 0, FLOOR);
+  wall.addColorStop(0, rgb([10, 11, 16])); wall.addColorStop(1, rgb([17, 18, 25]));
+  ctx.fillStyle = wall; ctx.fillRect(0, 0, W, FLOOR);
+  const fl = ctx.createLinearGradient(0, FLOOR, 0, H);
+  fl.addColorStop(0, rgb([22, 23, 30])); fl.addColorStop(1, rgb([9, 9, 13]));
+  ctx.fillStyle = fl; ctx.fillRect(0, FLOOR, W, H - FLOOR);
+  // плинтус
+  ctx.fillStyle = rgb([30, 32, 42], 0.9); ctx.fillRect(0, FLOOR - 3, W, 3);
+
+  if (lv > 0.01) {
+    const rad = Math.max(W, H) * 0.85;
+    const g = ctx.createRadialGradient(bp.x, bp.y, 0, bp.x, bp.y, rad);
+    g.addColorStop(0, `rgba(238,240,248,${0.26 * lv})`);
+    g.addColorStop(0.25, `rgba(220,226,240,${0.1 * lv})`);
+    g.addColorStop(1, 'rgba(220,226,240,0)');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    // конус света
+    const cone = ctx.createLinearGradient(0, bp.y, 0, FLOOR);
+    cone.addColorStop(0, `rgba(240,242,250,${0.1 * lv})`); cone.addColorStop(1, `rgba(240,242,250,${0.03 * lv})`);
+    ctx.fillStyle = cone;
+    ctx.beginPath();
+    ctx.moveTo(bp.x - bp.r * 0.8, bp.y); ctx.lineTo(bp.x + bp.r * 0.8, bp.y);
+    ctx.lineTo(bp.x + W * 0.32, FLOOR); ctx.lineTo(bp.x - W * 0.32, FLOOR); ctx.closePath(); ctx.fill();
+    // пятно на полу
+    ctx.save(); ctx.translate(bp.x, FLOOR + R * 0.25); ctx.scale(1, 0.12);
+    const sp = ctx.createRadialGradient(0, 0, 0, 0, 0, W * 0.38);
+    sp.addColorStop(0, `rgba(235,238,248,${0.24 * lv})`); sp.addColorStop(1, 'rgba(235,238,248,0)');
+    ctx.fillStyle = sp; ctx.beginPath(); ctx.arc(0, 0, W * 0.38, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  }
+}
+
+function drawLamp(lv) {
+  const bp = bulbPos();
+  ctx.strokeStyle = rgb([40, 42, 52]); ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(lamp.x, 0); ctx.lineTo(bp.x, bp.y - bp.r * 1.4); ctx.stroke();
+  ctx.save(); ctx.translate(bp.x, bp.y); ctx.rotate(-lamp.swing);
+  ctx.fillStyle = rgb(mix([28, 30, 38], [70, 72, 84], lv));
+  roundRect(-bp.r * 0.55, -bp.r * 1.55, bp.r * 1.1, bp.r * 0.75, 3); ctx.fill();
+  if (lamp.hasBulb) {
+    ctx.save(); ctx.rotate(Math.sin(lamp.bulbRot) * 0.06);
+    if (lv > 0.02) {
+      const glow = ctx.createRadialGradient(0, 0, 0, 0, 0, bp.r * 5);
+      glow.addColorStop(0, `rgba(255,252,240,${0.55 * lv})`); glow.addColorStop(1, 'rgba(255,252,240,0)');
+      ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(0, 0, bp.r * 5, 0, Math.PI * 2); ctx.fill();
+    }
+    drawBulbGlass(bp.r, lv);
+    ctx.restore();
+  }
+  ctx.restore();
+}
+function drawBulbGlass(r, lv) {
+  ctx.fillStyle = rgb(mix([46, 48, 58], [255, 253, 244], lv), 0.95);
+  ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill();
+  ctx.fillRect(-r * 0.45, -r * 1.0, r * 0.9, r * 0.5);
+  ctx.strokeStyle = rgb(mix([90, 92, 104], [255, 220, 150], lv), 0.9); ctx.lineWidth = 1.2;
+  ctx.beginPath(); ctx.moveTo(-r * 0.3, -r * 0.2); ctx.lineTo(-r * 0.1, r * 0.25); ctx.lineTo(r * 0.1, -r * 0.1); ctx.lineTo(r * 0.3, r * 0.25); ctx.stroke();
+}
+
+function roundRect(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+}
+
+function lightAt(x, lv) {
+  const bp = bulbPos();
+  return 0.1 + 0.9 * lv * (0.55 + 0.45 * Math.max(0, 1 - Math.abs(bp.x - x) / (W * 0.6)));
+}
+
+function drawShoe(lv) {
+  const la = lightAt(shoe.x, lv);
+  const sw = R * 1.05, sh = R * 0.46;
+  const air = clamp((FLOOR - shoe.y) / (R * 6), 0, 1);
+  ctx.fillStyle = `rgba(0,0,0,${0.45 * (1 - air) * (0.3 + 0.7 * lv)})`;
+  ctx.beginPath(); ctx.ellipse(shoe.x, FLOOR + 2, sw * 0.55 * (1 - air * 0.5), R * 0.09, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.save(); ctx.translate(shoe.x, shoe.y - sh / 2); ctx.rotate(shoe.rot);
+  ctx.fillStyle = rgb(mix(COL.dark, COL.shoe, la));
+  ctx.beginPath();
+  ctx.moveTo(-sw / 2, sh / 2 - sh * 0.25);
+  ctx.lineTo(-sw / 2, -sh / 2); ctx.quadraticCurveTo(-sw * 0.2, -sh * 0.62, -sw * 0.05, -sh * 0.15);
+  ctx.quadraticCurveTo(sw * 0.3, -sh * 0.05, sw / 2, sh * 0.1); ctx.lineTo(sw / 2, sh / 2 - sh * 0.25); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = rgb(mix(COL.dark, COL.sole, la));
+  roundRect(-sw / 2 - 1, sh / 2 - sh * 0.3, sw + 2, sh * 0.3, sh * 0.12); ctx.fill();
+  ctx.strokeStyle = rgb(mix(COL.dark, COL.sole, la * 0.9)); ctx.lineWidth = 1.5;
+  for (let i = 0; i < 3; i++) { const lx = -sw * 0.18 + i * sw * 0.1; ctx.beginPath(); ctx.moveTo(lx, -sh * 0.32 + i * sh * 0.07); ctx.lineTo(lx + sw * 0.07, -sh * 0.2 + i * sh * 0.07); ctx.stroke(); }
+  ctx.restore();
+}
+
+function bodyPath(rx, ry) {
+  ctx.beginPath();
+  const n = 48;
+  for (let i = 0; i <= n; i++) {
+    const a = i / n * Math.PI * 2, c = Math.cos(a), s = Math.sin(a);
+    const w = 1 + 0.022 * Math.sin(a * 3 + T * 2.6) + 0.016 * Math.sin(a * 5 - T * 1.9);
+    const x = c * rx * w;
+    let y = -ry + s * ry * w;
+    if (y > 0) y = 0;
+    i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+  }
+  ctx.closePath();
+}
+
+function drawBlob(lv) {
+  const { rx, ry } = dims();
+  const bp = bulbPos();
+  const la = lightAt(b.x, lv);
+  const ldir = clamp((bp.x - b.x) / (W * 0.4), -1, 1);
+
+  // тень
+  const air = clamp((FLOOR - b.y) / (R * 6), 0, 1);
+  ctx.fillStyle = `rgba(0,0,0,${0.5 * (1 - air) * (0.3 + 0.7 * lv)})`;
+  ctx.beginPath(); ctx.ellipse(b.x, FLOOR + 2, rx * 1.05 * (1 - air * 0.6), R * 0.13 * (1 - air * 0.5), 0, 0, Math.PI * 2); ctx.fill();
+
+  ctx.save();
+  const jx = b.jitter ? rand(-1, 1) * R * 0.04 : 0;
+  ctx.translate(b.x + jx, b.y); ctx.rotate(b.tilt);
+
+  const hi = mix(mix(COL.dark, COL.hi, la), COL.angry, b.red * 0.45);
+  const mid = mix(mix(COL.dark, COL.mid, la), COL.angry, b.red * 0.5);
+  const lo = mix(mix(COL.dark, COL.lo, la), [120, 40, 50], b.red * 0.5);
+  const g = ctx.createRadialGradient(ldir * rx * 0.45, -ry * 1.55, ry * 0.1, 0, -ry * 0.9, ry * 1.6);
+  g.addColorStop(0, rgb(hi)); g.addColorStop(0.55, rgb(mid)); g.addColorStop(1, rgb(lo));
+  bodyPath(rx, ry);
+  ctx.fillStyle = g; ctx.fill();
+  // контурный свет, чтобы чёрное тело не терялось в темноте
+  ctx.strokeStyle = `rgba(190,205,235,${0.12 + 0.3 * la})`; ctx.lineWidth = Math.max(1.5, R * 0.04); ctx.stroke();
+
+  // блик
+  ctx.fillStyle = `rgba(255,255,255,${0.42 * la})`;
+  ctx.beginPath(); ctx.ellipse(ldir * rx * 0.35 - rx * 0.1, -ry * 1.6, rx * 0.16, ry * 0.1, -0.5, 0, Math.PI * 2); ctx.fill();
+
+  drawFace(rx, ry, lv, mid);
+  drawHands(rx, ry, mid, lo, lv);
+  ctx.restore();
+}
+
+function drawFace(rx, ry, lv, bodyCol) {
+  const fx = b.look.x * rx * 0.22, fy = -ry * 1.15 + b.look.y * ry * 0.12;
+  const ex = rx * 0.33, ew = rx * 0.19, eh = ry * 0.24;
+  const ink = rgb(COL.ink);
+  const line = 'rgb(226,231,242)', mouthFill = 'rgb(112,30,46)';
+  const dark = lv < 0.35;
+  const blinking = b.blinkT > 0 && (b.eyes === 'open' || b.eyes === 'wide' || b.eyes === 'angry');
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+
+  // румянец
+  const bl = 0.12 + b.blush * 0.5;
+  ctx.fillStyle = `rgba(255,120,150,${bl * (0.4 + 0.6 * Math.max(lv, 0.2))})`;
+  for (const s of [-1, 1]) { ctx.beginPath(); ctx.ellipse(fx + s * ex * 1.35, fy + eh * 1.05, ew * 0.75, eh * 0.35, 0, 0, Math.PI * 2); ctx.fill(); }
+
+  for (const s of [-1, 1]) {
+    const x = fx + s * ex, y = fy - eh * 0.2;
+    const kind = blinking ? 'closed' : b.eyes;
+    ctx.strokeStyle = line; ctx.lineWidth = Math.max(2, R * 0.065);
+    if (kind === 'closed') { ctx.beginPath(); ctx.arc(x, y - eh * 0.2, ew * 0.8, 0.15 * Math.PI, 0.85 * Math.PI); ctx.stroke(); continue; }
+    if (kind === 'happy') { ctx.beginPath(); ctx.arc(x, y + eh * 0.25, ew * 0.8, 1.15 * Math.PI, 1.85 * Math.PI); ctx.stroke(); continue; }
+    if (kind === 'dizzy') {
+      ctx.beginPath(); ctx.moveTo(x - ew * 0.6, y - eh * 0.5); ctx.lineTo(x + ew * 0.6, y + eh * 0.5);
+      ctx.moveTo(x + ew * 0.6, y - eh * 0.5); ctx.lineTo(x - ew * 0.6, y + eh * 0.5); ctx.stroke(); continue;
+    }
+    const big = kind === 'wide' ? 1.22 : 1;
+    const w = ew * big, h = eh * big;
+    if (dark) { ctx.shadowColor = 'rgba(200,225,255,.9)'; ctx.shadowBlur = R * 0.5; }
+    ctx.fillStyle = dark ? 'rgb(232,242,255)' : 'rgb(250,251,255)';
+    ctx.beginPath();
+    if (kind === 'sleepy' || kind === 'drunk') ctx.ellipse(x, y, w, h, 0, 0, Math.PI);
+    else ctx.ellipse(x, y, w, h, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    let px = b.look.x * w * 0.4, py = b.look.y * h * 0.35;
+    if (kind === 'drunk') { px += s * w * 0.25; py = h * 0.4; }
+    if (kind === 'sleepy') py = h * 0.45;
+    const pr = kind === 'wide' ? w * 0.38 : w * 0.56;
+    ctx.fillStyle = ink;
+    ctx.beginPath(); ctx.arc(x + px, y + py, pr, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,.9)';
+    ctx.beginPath(); ctx.arc(x + px - pr * 0.35, y + py - pr * 0.35, pr * 0.3, 0, Math.PI * 2); ctx.fill();
+    if (kind === 'sleepy' || kind === 'drunk') {
+      ctx.strokeStyle = line; ctx.lineWidth = Math.max(2, R * 0.05);
+      ctx.beginPath(); ctx.moveTo(x - w * 1.05, y); ctx.lineTo(x + w * 1.05, y); ctx.stroke();
+    }
+  }
+  if (b.brow > 0.05) {
+    ctx.strokeStyle = line; ctx.lineWidth = Math.max(2, R * 0.07);
+    for (const s of [-1, 1]) {
+      const x = fx + s * ex, y = fy - eh * 1.45;
+      ctx.beginPath(); ctx.moveTo(x - s * ew * 0.1 + s * ew * 0.9, y - eh * 0.35 * b.brow); ctx.lineTo(x - s * ew * 0.9, y + eh * 0.25 * b.brow); ctx.stroke();
+    }
+  }
+
+  // рот
+  const mx = fx, my = fy + eh * 1.35, mw = rx * 0.2;
+  ctx.strokeStyle = line; ctx.fillStyle = mouthFill; ctx.lineWidth = Math.max(2, R * 0.06);
+  switch (b.mouth) {
+    case 'smile': ctx.beginPath(); ctx.arc(mx, my - mw * 0.55, mw, 0.2 * Math.PI, 0.8 * Math.PI); ctx.stroke(); break;
+    case 'grin':
+      ctx.beginPath(); ctx.moveTo(mx - mw, my - mw * 0.15); ctx.quadraticCurveTo(mx, my + mw * 1.3, mx + mw, my - mw * 0.15); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = 'rgb(240,110,130)'; ctx.beginPath(); ctx.ellipse(mx, my + mw * 0.38, mw * 0.4, mw * 0.2, 0, 0, Math.PI * 2); ctx.fill(); break;
+    case 'o': ctx.beginPath(); ctx.ellipse(mx, my + mw * 0.1, mw * 0.32, mw * 0.42, 0, 0, Math.PI * 2); ctx.fill(); break;
+    case 'sleep': ctx.beginPath(); ctx.ellipse(mx, my + mw * 0.1, mw * 0.18, mw * 0.14 + Math.sin(T * 2.2) * mw * 0.05, 0, 0, Math.PI * 2); ctx.fill(); break;
+    case 'wide':
+      ctx.beginPath(); ctx.ellipse(mx, my + mw * 0.3, mw * 0.85, mw * 0.75, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = 'rgb(240,110,130)'; ctx.beginPath(); ctx.ellipse(mx, my + mw * 0.7, mw * 0.5, mw * 0.25, 0, 0, Math.PI * 2); ctx.fill(); break;
+    case 'flat': ctx.beginPath(); ctx.moveTo(mx - mw * 0.6, my); ctx.lineTo(mx + mw * 0.6, my); ctx.stroke(); break;
+    case 'frown': ctx.beginPath(); ctx.arc(mx, my + mw * 0.75, mw * 0.8, 1.2 * Math.PI, 1.8 * Math.PI); ctx.stroke(); break;
+    case 'wavy':
+      ctx.beginPath();
+      for (let i = 0; i <= 12; i++) { const t = i / 12, x = mx - mw + t * mw * 2, y = my + Math.sin(t * Math.PI * 3 + T * 4) * mw * 0.15; i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
+      ctx.stroke(); break;
+    case 'puff': {
+      ctx.beginPath(); ctx.moveTo(mx - mw * 0.3, my); ctx.lineTo(mx + mw * 0.3, my); ctx.stroke();
+      const pr = rx * (0.14 + b.puff * 0.12);
+      ctx.fillStyle = rgb(mix(bodyCol, [255, 255, 255], 0.15)); ctx.strokeStyle = rgb(mix(bodyCol, COL.ink, 0.5)); ctx.lineWidth = 1.5;
+      for (const s of [-1, 1]) { ctx.beginPath(); ctx.arc(mx + s * mw * 1.2, my - mw * 0.1, pr, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); }
+      break;
+    }
+  }
+}
+
+function drawHands(rx, ry, mid, lo, lv) {
+  const hr = R * 0.2;
+  const pts = {};
+  for (const k of ['l', 'r']) {
+    const x = b.pose[k][0] * rx, y = -ry + b.pose[k][1] * ry;
+    pts[k] = { x, y };
+    ctx.fillStyle = rgb(mid); ctx.strokeStyle = `rgba(190,205,235,${0.15 + 0.3 * lightAt(b.x, lv)})`; ctx.lineWidth = Math.max(1.5, R * 0.04);
+    ctx.beginPath(); ctx.arc(x, y, hr, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  }
+  if (b.holdBottle) {
+    ctx.save(); ctx.translate(pts.r.x, pts.r.y); ctx.rotate(b.bottleTilt);
+    drawBottle(R, lightAt(b.x, lv));
+    ctx.restore();
+  }
+  if (b.holdBulb) {
+    ctx.save(); ctx.translate((pts.l.x + pts.r.x) / 2, (pts.l.y + pts.r.y) / 2 - R * 0.15);
+    drawBulbGlass(R * 0.3, 0.06);
+    ctx.restore();
+  }
+}
+function drawBottle(r, la) {
+  const c = mix(COL.dark, COL.glass, la);
+  ctx.fillStyle = rgb(c, 0.95);
+  roundRect(-r * 0.14, -r * 0.4, r * 0.28, r * 0.52, r * 0.07); ctx.fill();
+  ctx.fillRect(-r * 0.06, -r * 0.62, r * 0.12, r * 0.24);
+  ctx.fillStyle = rgb(mix(COL.dark, [226, 210, 170], la));
+  ctx.fillRect(-r * 0.14, -r * 0.25, r * 0.28, r * 0.17);
+}
+
+function drawParts(lv) {
+  for (const p of parts) {
+    const a = clamp(p.life / p.max, 0, 1);
+    if (p.type === 'text') {
+      const sz = p.size * (p.grow ? 1 + (1 - a) * 0.8 : 1);
+      ctx.font = `${sz}px ${handFont}`;
+      ctx.fillStyle = `rgba(225,232,248,${a})`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(p.text, p.x, p.y);
+    } else if (p.type === 'star') {
+      ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rot); ctx.fillStyle = `rgba(255,236,150,${a})`;
+      ctx.beginPath();
+      for (let i = 0; i < 10; i++) { const rr = i % 2 ? p.size * 0.45 : p.size; const an = i / 10 * Math.PI * 2; ctx.lineTo(Math.cos(an) * rr, Math.sin(an) * rr); }
+      ctx.closePath(); ctx.fill(); ctx.restore();
+    } else if (p.type === 'puff') {
+      ctx.fillStyle = `rgba(170,210,140,${a * 0.5})`;
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.size * (1.6 - a * 0.6), 0, Math.PI * 2); ctx.fill();
+    } else if (p.type === 'spark') {
+      ctx.fillStyle = `rgba(255,230,160,${a})`; ctx.fillRect(p.x - 1.5, p.y - 1.5, 3, 3);
+    } else if (p.type === 'bottle') {
+      ctx.save(); ctx.globalAlpha = a; ctx.translate(p.x, Math.min(p.y, FLOOR - R * 0.2)); ctx.rotate(p.rot); drawBottle(R, lightAt(p.x, lv)); ctx.restore();
+    } else if (p.type === 'ring') {
+      ctx.strokeStyle = `rgba(220,230,255,${a * 0.6})`; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(p.x, p.y, R * 0.2 + (1 - a) * R * 0.6, 0, Math.PI * 2); ctx.stroke();
+    }
+  }
+}
+
+let handFont = '';
+function drawBubble() {
+  if (!bubble) return;
+  const { ry } = dims();
+  const age = bubble.max - bubble.life;
+  const sc = Math.min(1, age / 0.12) * (bubble.life < 0.2 ? bubble.life / 0.2 : 1);
+  if (sc <= 0) return;
+  const fs = clamp(R * 0.44, 15, 24);
+  ctx.font = `${fs}px ${handFont}`;
+  const tw = ctx.measureText(bubble.text).width;
+  const pw = fs * 0.7, bw = tw + pw * 2, bh = fs * 1.7;
+  let bx = clamp(b.x, bw / 2 + 8, W - bw / 2 - 8);
+  let by = b.y - ry * 2.2 - R * 0.55;
+  let below = false;
+  if (by - bh < 8) { by = b.y + R * 0.3 + bh; below = true; if (by > H - 8) by = H - 8; }
+  ctx.save(); ctx.translate(bx, by - bh / 2); ctx.scale(sc, sc); ctx.translate(-bx, -(by - bh / 2));
+  ctx.fillStyle = 'rgba(236,239,247,.96)';
+  roundRect(bx - bw / 2, by - bh, bw, bh, bh / 2); ctx.fill();
+  const tx = clamp(b.x, bx - bw / 2 + 14, bx + bw / 2 - 14);
+  ctx.beginPath();
+  if (!below) { ctx.moveTo(tx - 7, by - 1); ctx.lineTo(tx, by + 9); ctx.lineTo(tx + 7, by - 1); }
+  else { ctx.moveTo(tx - 7, by - bh + 1); ctx.lineTo(tx, by - bh - 9); ctx.lineTo(tx + 7, by - bh + 1); }
+  ctx.fill();
+  ctx.fillStyle = '#16181f'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(bubble.text, bx, by - bh / 2 + 1);
+  ctx.restore();
+}
+
+function draw() {
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  const lv = lightLevel();
+  ctx.save();
+  if (shakeAmt > 0) ctx.translate(rand(-1, 1) * shakeAmt, rand(-1, 1) * shakeAmt);
+  drawRoom(lv);
+  drawLamp(lv);
+  drawShoe(lv);
+  drawBlob(lv);
+  drawParts(lv);
+  ctx.restore();
+  // виньетка
+  const v = ctx.createRadialGradient(W / 2, H * 0.55, Math.min(W, H) * 0.3, W / 2, H * 0.55, Math.max(W, H) * 0.8);
+  v.addColorStop(0, 'rgba(0,0,0,0)'); v.addColorStop(1, `rgba(0,0,0,${0.55 + (1 - lv) * 0.3})`);
+  ctx.fillStyle = v; ctx.fillRect(0, 0, W, H);
+  drawBubble();
+}
+
+let last = performance.now(), lastTipsy = false;
+function frame(now) {
+  const dt = Math.min(0.033, (now - last) / 1000); last = now;
+  if (W > 0) {
+    update(dt); draw();
+    const tipsyNow = b.tipsy > 0.5;
+    if (tipsyNow !== lastTipsy && act) { lastTipsy = tipsyNow; statusEl.innerHTML = 'Бульк <b>' + (NAMES[act.name] || '') + '</b>' + (tipsyNow ? ' · навеселе' : ''); }
+  }
+  requestAnimationFrame(frame);
+}
+
+function start() {
+  handFont = getComputedStyle(document.documentElement).getPropertyValue('--font-hand').trim() || 'cursive';
+  resize();
+  setAct('wave');
+  requestAnimationFrame(t => { last = t; frame(t); });
+}
+if (document.fonts && document.fonts.load) {
+  Promise.race([document.fonts.load('20px Neucha'), new Promise(r => setTimeout(r, 1200))]).then(start, start);
+} else start();
+})();
+</script>
