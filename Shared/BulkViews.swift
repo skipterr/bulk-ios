@@ -123,16 +123,20 @@ struct FaceView: View {
 
 struct BulbView: View {
     var on: Bool
+    var size: CGFloat
     var body: some View {
         ZStack {
             if on {
                 Circle()
-                    .fill(RadialGradient(colors: [Color(red: 1, green: 0.98, blue: 0.9).opacity(0.65), .clear],
-                                         center: .center, startRadius: 0, endRadius: 24))
-                    .frame(width: 48, height: 48)
+                    .fill(RadialGradient(colors: [Color(red: 1, green: 0.98, blue: 0.9).opacity(0.6), .clear],
+                                         center: .center, startRadius: 0, endRadius: size * 2))
+                    .frame(width: size * 4, height: size * 4)
             }
-            Circle().fill(on ? Color(red: 1, green: 0.98, blue: 0.9) : Color(white: 0.32))
+            Circle()
+                .fill(on ? Color(red: 1, green: 0.98, blue: 0.9) : Color(white: 0.32))
+                .frame(width: size, height: size)
         }
+        .frame(width: size, height: size)
     }
 }
 
@@ -198,7 +202,7 @@ struct BulkBody: View {
                 hand(at: lh, size: w * 0.17)
                 hand(at: rh, size: w * 0.17)
                 if holding == .bulb {
-                    BulbView(on: false).frame(width: w * 0.17, height: w * 0.17).position(x: w * 0.5, y: h * 0.74)
+                    BulbView(on: false, size: w * 0.17).position(x: w * 0.5, y: h * 0.74)
                 }
             }
         }
@@ -220,7 +224,7 @@ struct BulkBody: View {
 
     private func leftHand(w: CGFloat, h: CGFloat) -> CGPoint {
         switch arms {
-        case .rest, .wave, .drink: return CGPoint(x: w * 0.02, y: h * 0.65)
+        case .rest, .wave, .waveLow, .drink: return CGPoint(x: w * 0.02, y: h * 0.65)
         case .up: return CGPoint(x: w * 0.3, y: -h * 0.08)
         case .hold: return CGPoint(x: w * 0.36, y: h * 0.82)
         }
@@ -231,6 +235,7 @@ struct BulkBody: View {
         case .rest: return CGPoint(x: w * 0.98, y: h * 0.65)
         case .up: return CGPoint(x: w * 0.7, y: -h * 0.08)
         case .wave: return CGPoint(x: w * 1.02, y: h * 0.05)
+        case .waveLow: return CGPoint(x: w * 1.08, y: h * 0.35)
         case .hold: return CGPoint(x: w * 0.64, y: h * 0.82)
         case .drink: return CGPoint(x: w * 0.8, y: h * 0.55)
         }
@@ -282,6 +287,96 @@ extension BulkAction {
         default: return .none
         }
     }
+
+    // Сколько кадров в цикле движения и как быстро он крутится.
+    var frameCount: Int {
+        switch self {
+        case .scared, .poked, .swear, .mad: return 6
+        case .dance, .wave, .kick, .unscrew, .screwBack, .fixLight: return 8
+        default: return 12
+        }
+    }
+
+    var period: TimeInterval {
+        switch self {
+        case .chill, .stare: return 3.6
+        case .sleep: return 4
+        case .wave: return 1.2
+        case .burp: return 2.4
+        case .swear, .mad, .poked: return 0.6
+        case .drink, .inDark: return 2
+        case .unscrew, .screwBack, .fixLight: return 1
+        case .kick: return 1.4
+        case .dance: return 1
+        case .scared: return 0.36
+        }
+    }
+
+    func framePose(_ i: Int, of n: Int, drunk: Bool) -> FramePose {
+        let t = Double(i) / Double(n)
+        let s = sin(t * 2 * Double.pi)
+        let odd = i % 2 == 1
+        var f = FramePose()
+        switch self {
+        case .chill, .stare:
+            f.sy = 1 + 0.03 * s
+            f.sx = 1 - 0.02 * s
+            if i == n - 1 { f.eyes = .closed }
+        case .sleep:
+            f.sy = 1 + 0.05 * s
+            f.sx = 1 - 0.03 * s
+        case .wave:
+            f.arms = odd ? .wave : .waveLow
+            f.tilt = 3 * s
+        case .burp:
+            if t < 0.55 {
+                f.sx = 1 + 0.25 * t
+                f.mouth = .o
+                f.eyes = .open
+            } else {
+                f.mouth = .wide
+                f.eyes = .closed
+                f.dy = -3
+            }
+        case .swear, .mad:
+            f.dx = odd ? 2.5 : -2.5
+            f.dy = odd ? -2 : 0
+            f.arms = odd ? .up : .rest
+        case .drink:
+            f.tilt = 3 * s
+            f.sy = 1 + 0.02 * s
+        case .unscrew, .screwBack, .fixLight:
+            f.tilt = 10 * s
+        case .inDark:
+            f.dy = -3 * max(0, s)
+            f.tilt = 4 * s
+        case .kick:
+            f.tilt = 12 * s
+            f.dx = 2 * s
+        case .dance:
+            f.dy = -6 * abs(s)
+            f.tilt = 12 * s
+            f.arms = odd ? .wave : .up
+        case .poked:
+            f.sy = 1 + 0.06 * s
+            f.sx = 1 - 0.05 * s
+        case .scared:
+            f.dx = odd ? 1.5 : -1.5
+        }
+        if drunk { f.tilt += 6 * s }
+        return f
+    }
+}
+
+struct FramePose {
+    var dx: Double = 0
+    var dy: Double = 0
+    var tilt: Double = 0
+    var sx: Double = 1
+    var sy: Double = 1
+    var eyes: Eyes? = nil
+    var mouth: Mouth? = nil
+    var arms: Arms? = nil
 }
 
 struct BulkScene: View {
@@ -323,16 +418,21 @@ struct BulkScene: View {
                 .frame(width: bodyW * (pose.lift ? 0.6 : 1), height: 5)
                 .position(x: bx, y: floorY + 1)
 
-            BulkBody(eyes: drunkLook ? .drunk : action.eyes,
-                     mouth: drunkLook ? .wavy : action.mouth,
-                     dark: dark,
-                     angry: action == .mad || action == .swear,
-                     arms: pose.arms,
-                     holding: action.holding,
-                     blush: 0.15 + min(1, tipsy) * 0.5)
-                .frame(width: bodyW * pose.sx, height: bodyH * pose.sy)
-                .rotationEffect(.degrees(pose.tilt + (drunkLook ? 8 : 0)), anchor: .bottom)
-                .position(x: bx, y: bottomY - bodyH * pose.sy / 2)
+            Flipbook(count: action.frameCount, period: action.period) { i in
+                let f = action.framePose(i, of: action.frameCount, drunk: drunkLook)
+                BulkBody(eyes: f.eyes ?? (drunkLook ? .drunk : action.eyes),
+                         mouth: f.mouth ?? (drunkLook ? .wavy : action.mouth),
+                         dark: dark,
+                         angry: action == .mad || action == .swear,
+                         arms: f.arms ?? pose.arms,
+                         holding: action.holding,
+                         blush: 0.15 + min(1, tipsy) * 0.5)
+                    .frame(width: bodyW * pose.sx * CGFloat(f.sx), height: bodyH * pose.sy * CGFloat(f.sy))
+                    .rotationEffect(.degrees(pose.tilt + f.tilt + (drunkLook ? 8 : 0)), anchor: .bottom)
+                    .offset(x: CGFloat(f.dx), y: CGFloat(f.dy))
+                    .frame(width: bodyW * 1.6, height: bodyH * 1.5, alignment: .bottom)
+            }
+            .position(x: bx, y: bottomY - bodyH * 1.5 / 2)
 
             effects(bx: bx, topY: bottomY - bodyH * pose.sy, bodyW: bodyW)
 
@@ -362,24 +462,46 @@ struct BulkScene: View {
                 .position(x: lampX, y: floorY + 2)
         }
         Rectangle().fill(Color.white.opacity(0.07)).frame(width: w, height: 1).position(x: w / 2, y: floorY)
-        Rectangle().fill(Color(white: 0.22)).frame(width: 1.5, height: bulbY).position(x: lampX, y: bulbY / 2)
-        RoundedRectangle(cornerRadius: 2).fill(Color(white: lightOn ? 0.35 : 0.2))
-            .frame(width: 9, height: 6).position(x: lampX, y: bulbY - 5)
-        if action != .inDark {
-            BulbView(on: lightOn).frame(width: 12, height: 12).position(x: lampX, y: bulbY + 3)
+        // лампа слегка качается на проводе
+        Flipbook(count: 8, period: 3) { i in
+            lamp(bulbY: bulbY)
+                .rotationEffect(.degrees(sin(Double(i) / 8 * 2 * Double.pi) * 3), anchor: .top)
         }
+        .frame(width: 60, height: bulbY + 30)
+        .position(x: lampX, y: (bulbY + 30) / 2)
+    }
+
+    private func lamp(bulbY: CGFloat) -> some View {
+        ZStack {
+            Rectangle().fill(Color(white: 0.22)).frame(width: 1.5, height: bulbY).position(x: 30, y: bulbY / 2)
+            RoundedRectangle(cornerRadius: 2).fill(Color(white: lightOn ? 0.35 : 0.2))
+                .frame(width: 9, height: 6).position(x: 30, y: bulbY - 5)
+            if action != .inDark {
+                BulbView(on: lightOn, size: 12).position(x: 30, y: bulbY + 3)
+            }
+        }
+        .frame(width: 60, height: bulbY + 30)
     }
 
     @ViewBuilder
     private func effects(bx: CGFloat, topY: CGFloat, bodyW: CGFloat) -> some View {
         switch action {
         case .sleep:
-            Text("z Z").font(.system(size: 11, weight: .bold, design: .rounded))
-                .foregroundStyle(Color.white.opacity(0.6))
-                .position(x: bx + bodyW * 0.55, y: topY - 4)
+            Flipbook(count: 6, period: 3) { i in
+                Text("z").font(.system(size: 9 + CGFloat(i) * 1.5, weight: .bold, design: .rounded))
+                    .foregroundStyle(Color.white.opacity(0.7 - Double(i) * 0.1))
+                    .offset(x: CGFloat(i) * 2.5, y: -CGFloat(i) * 4)
+                    .frame(width: 40, height: 40, alignment: .bottomLeading)
+            }
+            .position(x: bx + bodyW * 0.6, y: topY - 10)
         case .dance:
-            Text("♪").font(.system(size: 14)).foregroundStyle(Color.white.opacity(0.7))
-                .position(x: bx - bodyW * 0.6, y: topY + 4)
+            Flipbook(count: 4, period: 1.6) { i in
+                Text(i % 2 == 0 ? "♪" : "♫").font(.system(size: 14))
+                    .foregroundStyle(Color.white.opacity(0.7))
+                    .offset(x: i < 2 ? -4 : 4, y: -CGFloat(i % 2) * 5)
+                    .frame(width: 30, height: 30)
+            }
+            .position(x: bx - bodyW * 0.6, y: topY + 4)
         case .burp:
             Circle().fill(Color(red: 0.65, green: 0.82, blue: 0.55).opacity(0.35))
                 .frame(width: 16, height: 16).position(x: bx + bodyW * 0.55, y: topY + 10)

@@ -2,7 +2,7 @@ import Foundation
 
 enum Eyes: String, Codable { case open, closed, happy, wide, angry, dizzy, drunk }
 enum Mouth: String, Codable { case smile, grin, o, wide, flat, frown, wavy }
-enum Arms: String, Codable { case rest, up, wave, hold, drink }
+enum Arms: String, Codable { case rest, up, wave, waveLow, hold, drink }
 enum Prop: String, Codable { case none, bottle, bulb }
 
 // Всё, чем Бульк может быть занят. Одно действие = одна сценка в виджете.

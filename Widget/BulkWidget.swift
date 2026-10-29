@@ -23,7 +23,7 @@ struct BulkProvider: TimelineProvider {
         completion(Timeline(entries: Self.makeEntries(now: .now), policy: .atEnd))
     }
 
-    // План на ближайший час: каждые 4–7 минут Бульк сам меняет занятие.
+    // План на ближайшие полчаса-час: каждые 2,5–5 минут Бульк сам меняет занятие.
     static func makeEntries(now: Date) -> [BulkEntry] {
         var s = BulkStore.load()
         let fresh = now.timeIntervalSince(s.since) < 150
@@ -39,7 +39,7 @@ struct BulkProvider: TimelineProvider {
         var entries: [BulkEntry] = []
         for i in 0..<12 {
             entries.append(BulkEntry(date: t, action: action, phrase: phrase, lightOn: light, tipsy: tipsy))
-            t = t.addingTimeInterval(i == 0 && fresh ? 90 : Double.random(in: 240...420))
+            t = t.addingTimeInterval(i == 0 && fresh ? 90 : Double.random(in: 150...300))
             action = BulkBrain.next(after: action, lightOn: light)
             phrase = action.phrases.randomElement() ?? ""
             light = action.lightAfter(light)
@@ -52,29 +52,10 @@ struct BulkProvider: TimelineProvider {
 struct BulkWidgetView: View {
     let entry: BulkEntry
 
+    // Без кнопок: на виджете Бульк просто живёт. Тап открывает приложение.
     var body: some View {
-        HStack(spacing: 0) {
-            BulkScene(action: entry.action, phrase: entry.phrase, lightOn: entry.lightOn, tipsy: entry.tipsy)
-                .animation(.spring(duration: 0.6), value: entry.action)
-            VStack(spacing: 6) {
-                control(PokeIntent(), icon: "hand.point.up.left.fill")
-                control(DrinkIntent(), icon: "mug.fill")
-                control(LightIntent(), icon: entry.lightOn ? "lightbulb.fill" : "lightbulb")
-                control(KickIntent(), icon: "figure.soccer")
-            }
-            .padding(.horizontal, 8)
-        }
-    }
-
-    private func control<I: AppIntent>(_ intent: I, icon: String) -> some View {
-        Button(intent: intent) {
-            Image(systemName: icon)
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(Color.white.opacity(0.85))
-                .frame(width: 28, height: 28)
-                .background(Circle().fill(Color.white.opacity(0.09)))
-        }
-        .buttonStyle(.plain)
+        BulkScene(action: entry.action, phrase: entry.phrase, lightOn: entry.lightOn, tipsy: entry.tipsy)
+            .animation(.spring(duration: 0.6), value: entry.action)
     }
 }
 
