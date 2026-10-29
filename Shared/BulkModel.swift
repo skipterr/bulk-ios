@@ -113,14 +113,14 @@ enum BulkStore {
     private static let key = "bulk.state.v1"
 
     static func load() -> BulkState {
-        guard let data = UserDefaults.standard.data(forKey: key),
+        guard let data = SharedGroup.defaults.data(forKey: key),
               let state = try? JSONDecoder().decode(BulkState.self, from: data) else { return BulkState() }
         return state
     }
 
     static func save(_ state: BulkState) {
         if let data = try? JSONEncoder().encode(state) {
-            UserDefaults.standard.set(data, forKey: key)
+            SharedGroup.defaults.set(data, forKey: key)
         }
     }
 }

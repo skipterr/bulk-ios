@@ -343,6 +343,7 @@ struct SpriteProbe: View {
                 LiveSprite(action: .dance, height: 18)
             }
             HStack(spacing: 3) {
+                Text(SharedGroup.isShared ? "G: связь есть" : "G: связи нет").font(.system(size: 7))
                 Text("E").font(.system(size: 7))
                 LayeredSprite(action: .dance, height: 26, live: false)
                 Text("F").font(.system(size: 7))

@@ -502,17 +502,23 @@ function brain() {
 }
 
 // ---------- взаимодействие ----------
+// В приложении на iPhone сообщаем виджету, что ты сделал с Бульком.
+function notifyWidget(action) {
+  try { window.webkit.messageHandlers.bulk.postMessage(action); } catch (_) {}
+}
 function poke() {
   if (b.grabbed || b.hang) return;
-  if (b.asleep) { setAct('wake'); return; }
+  if (b.asleep) { setAct('wake'); notifyWidget('mad'); return; }
   pokes += 1; b.sv -= 2.8; if (b.ground) b.vx += rand(-1, 1) * R;
-  if (pokes >= 5) { pokes = 1.5; setAct('swear'); say(pick(P.pokeMad), 2); return; }
+  if (pokes >= 5) { pokes = 1.5; setAct('swear'); say(pick(P.pokeMad), 2); notifyWidget('mad'); return; }
+  notifyWidget('poked');
   if (act && act.kind) { say(pick(P.poke), 1); return; }
   setAct('poked');
 }
 function toggleLamp() {
   if (!lamp.hasBulb) { say(pick(P.bulbMine)); return; }
   lamp.on = !lamp.on; lamp.flick = 0.12;
+  notifyWidget(lamp.on ? 'chill' : 'scared');
   if (!lamp.on) {
     if (b.asleep || !free()) return;
     setAct('scared');
@@ -526,17 +532,20 @@ function throwShoe() {
   if (!shoeResting() && shoe.y < FLOOR - 1) return;
   const d = Math.sign(b.x - shoe.x) || 1;
   shoe.vx = d * clamp(Math.abs(b.x - shoe.x) * 2.2, R * 6, R * 16); shoe.vy = -R * 11; shoe.vr = d * 14; shoe.kickT = 0;
+  notifyWidget('mad');
 }
 function giveDrink() {
   if (!free()) { say(pick(P.busy), 1); return; }
   if (b.holdBulb) { say(pick(P.handsFull), 1.2); return; }
   if (b.asleep) { setAct('wake'); return; }
   setAct('drink');
+  notifyWidget('drink');
 }
 function sendToSleep() {
   if (!free()) { say(pick(P.busy), 1); return; }
   if (b.asleep) { setAct('wake'); return; }
   setAct('sleep');
+  notifyWidget('sleep');
 }
 document.getElementById('bDrink').onclick = giveDrink;
 document.getElementById('bLight').onclick = toggleLamp;

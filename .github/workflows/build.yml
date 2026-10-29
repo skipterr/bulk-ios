@@ -14,7 +14,8 @@ jobs:
       - name: Render frames and build sprite fonts
         run: |
           xcrun --sdk macosx swiftc -parse-as-library -O -target "$(uname -m)-apple-macos14" \
-            Shared/BulkModel.swift Shared/BulkViews.swift Shared/Flipbook.swift Tools/RenderFrames.swift -o render
+            Shared/BulkModel.swift Shared/BulkViews.swift Shared/Flipbook.swift Shared/SharedGroup.swift \
+            Tools/RenderFrames.swift -o render
           ./render frames App/Assets.xcassets/AppIcon.appiconset/icon.png
           python3 -m venv .venv
           .venv/bin/pip install -q fonttools pillow
@@ -50,6 +51,11 @@ jobs:
 
       - name: Package IPA
         run: |
+          # вшиваем права на общую память (App Group); Sideloadly переподпишет своим Apple ID
+          APP=build/Release-iphoneos/Bulk.app
+          codesign -f -s - --entitlements Widget/BulkWidget.entitlements "$APP/PlugIns/BulkWidget.appex"
+          codesign -f -s - --entitlements App/Bulk.entitlements "$APP"
+          codesign -d --entitlements - "$APP" || true
           mkdir Payload
           cp -R build/Release-iphoneos/Bulk.app Payload/
           zip -qry Bulk.ipa Payload

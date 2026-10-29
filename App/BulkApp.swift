@@ -1,5 +1,6 @@
 import SwiftUI
 import WebKit
+import WidgetKit
 
 @main
 struct BulkApp: App {
@@ -16,17 +17,20 @@ struct ContentView: View {
     var body: some View {
         BulkWebView()
             .ignoresSafeArea()
-            .background(Color(red: 0.03, green: 0.03, blue: 0.045))
+            .background(Color(white: 0.11))
             .preferredColorScheme(.dark)
-            .statusBarHidden(false)
     }
 }
 
 struct BulkWebView: UIViewRepresentable {
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
     func makeUIView(context: Context) -> WKWebView {
-        let web = WKWebView(frame: .zero, configuration: WKWebViewConfiguration())
+        let config = WKWebViewConfiguration()
+        config.userContentController.add(context.coordinator, name: "bulk")
+        let web = WKWebView(frame: .zero, configuration: config)
         web.isOpaque = false
-        web.backgroundColor = UIColor(red: 0.03, green: 0.03, blue: 0.045, alpha: 1)
+        web.backgroundColor = UIColor(white: 0.11, alpha: 1)
         web.scrollView.isScrollEnabled = false
         web.scrollView.bounces = false
         web.scrollView.contentInsetAdjustmentBehavior = .never
@@ -37,4 +41,19 @@ struct BulkWebView: UIViewRepresentable {
     }
 
     func updateUIView(_ uiView: WKWebView, context: Context) {}
+
+    // Что ты сделал с Бульком в приложении — сразу уходит в виджет.
+    final class Coordinator: NSObject, WKScriptMessageHandler {
+        func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
+            guard let name = message.body as? String, let action = BulkAction(rawValue: name) else { return }
+            var s = BulkStore.load()
+            s.set(action, at: Date())
+            if action == .chill {
+                s.lightOn = true
+                s.phrase = "о, свет!"
+            }
+            BulkStore.save(s)
+            WidgetCenter.shared.reloadAllTimelines()
+        }
+    }
 }
