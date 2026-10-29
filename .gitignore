@@ -4,4 +4,8 @@ Payload/
 *.ipa
 App/Info.plist
 Widget/Info.plist
+Widget/Fonts/
+frames/
+render
+.venv/
 .DS_Store

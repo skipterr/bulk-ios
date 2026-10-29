@@ -36,6 +36,23 @@ targets:
       path: Widget/Info.plist
       properties:
         CFBundleDisplayName: Бульк
+        UIAppFonts:
+          - BulkChill.ttf
+          - BulkWave.ttf
+          - BulkSleep.ttf
+          - BulkBurp.ttf
+          - BulkSwear.ttf
+          - BulkDrink.ttf
+          - BulkUnscrew.ttf
+          - BulkInDark.ttf
+          - BulkScrewBack.ttf
+          - BulkFixLight.ttf
+          - BulkKick.ttf
+          - BulkDance.ttf
+          - BulkStare.ttf
+          - BulkPoked.ttf
+          - BulkMad.ttf
+          - BulkScared.ttf
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
     settings:

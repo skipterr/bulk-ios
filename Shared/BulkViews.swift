@@ -270,6 +270,30 @@ struct BulkBody: View {
     }
 }
 
+// MARK: - Живой Бульк в виджете
+
+/// Секундомер, нарисованный шрифтом, где цифры 0-9 — кадры Булька (шрифты собираются при сборке).
+/// Видна только последняя цифра, она меняется раз в секунду — так Бульк двигается прямо на экране «Домой».
+struct LiveSprite: View {
+    let action: BulkAction
+    let height: CGFloat
+
+    private static let epoch = Date(timeIntervalSince1970: 1_700_000_000)
+
+    private var fontName: String {
+        "Bulk" + action.rawValue.prefix(1).uppercased() + action.rawValue.dropFirst()
+    }
+
+    var body: some View {
+        Text(Self.epoch, style: .timer)
+            .font(.custom(fontName, size: height))
+            .lineLimit(1)
+            .fixedSize()
+            .frame(width: height * 1.4, height: height, alignment: .trailing)
+            .clipped()
+    }
+}
+
 // MARK: - Сцена
 
 struct BulkPose {
@@ -439,21 +463,8 @@ struct BulkScene: View {
                 .frame(width: bodyW * (pose.lift ? 0.6 : 1), height: 5)
                 .position(x: bx, y: floorY + 1)
 
-            Flipbook(count: action.frameCount, period: action.period) { i in
-                let f = action.framePose(i, of: action.frameCount, drunk: drunkLook)
-                BulkBody(eyes: f.eyes ?? (drunkLook ? .drunk : action.eyes),
-                         mouth: f.mouth ?? (drunkLook ? .wavy : action.mouth),
-                         dark: dark,
-                         angry: action == .mad || action == .swear,
-                         arms: f.arms ?? pose.arms,
-                         holding: action.holding,
-                         blush: min(1, tipsy) * 0.5)
-                    .frame(width: bodyW * pose.sx * CGFloat(f.sx), height: bodyH * pose.sy * CGFloat(f.sy))
-                    .rotationEffect(.degrees(pose.tilt + f.tilt + (drunkLook ? 8 : 0)), anchor: .bottom)
-                    .offset(x: CGFloat(f.dx), y: CGFloat(f.dy))
-                    .frame(width: bodyW * 1.6, height: bodyH * 1.5, alignment: .bottom)
-            }
-            .position(x: bx, y: bottomY - bodyH * 1.5 / 2)
+            LiveSprite(action: action, height: bodyH * 2)
+                .position(x: bx, y: bottomY - bodyH)
 
             effects(bx: bx, topY: bottomY - bodyH * pose.sy, bodyW: bodyW)
 

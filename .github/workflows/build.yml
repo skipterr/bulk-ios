@@ -11,6 +11,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Render frames and build sprite fonts
+        run: |
+          xcrun --sdk macosx swiftc -parse-as-library -O -target "$(uname -m)-apple-macos14" \
+            Shared/BulkModel.swift Shared/BulkViews.swift Shared/Flipbook.swift Tools/RenderFrames.swift -o render
+          ./render frames
+          python3 -m venv .venv
+          .venv/bin/pip install -q fonttools
+          .venv/bin/python Tools/make_fonts.py frames Widget/Fonts
+          ls -la Widget/Fonts
+
       - name: Generate Xcode project
         run: |
           brew install xcodegen
