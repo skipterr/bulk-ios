@@ -294,19 +294,60 @@ struct LiveSprite: View {
     }
 }
 
-/// Временный тестовый блок: A — обычный секундомер, B — цифры шрифтом-кадрами,
-/// C — секундомер шрифтом-кадрами целиком, D — то же с обрезкой до последней цифры.
+/// Запасной способ: три одноцветных шрифта-слоя (тело, белое, чёрное) накладываются друг на друга.
+struct LayeredSprite: View {
+    let action: BulkAction
+    let height: CGFloat
+    var live = true
+
+    private var base: String {
+        "Bulk" + action.rawValue.prefix(1).uppercased() + action.rawValue.dropFirst()
+    }
+
+    var body: some View {
+        ZStack {
+            layer("F", Color(white: 0.47))
+            layer("W", .white)
+            layer("K", Color(white: 0.07))
+        }
+        .frame(width: height * 1.4, height: height, alignment: .trailing)
+        .clipped()
+    }
+
+    @ViewBuilder
+    private func layer(_ suffix: String, _ color: Color) -> some View {
+        Group {
+            if live { Text(LiveSprite.epoch, style: .timer) } else { Text("5") }
+        }
+        .font(.custom(base + suffix, size: height))
+        .foregroundStyle(color)
+        .lineLimit(1)
+        .fixedSize()
+        .frame(width: height * 1.4, height: height, alignment: .trailing)
+    }
+}
+
+/// Временный тестовый блок. Верхний ряд — цветные кадры: A обычный секундомер, B кадр, C секундомер кадрами, D итог.
+/// Нижний ряд — слои: E кадр из слоёв, F секундомер из слоёв (итог запасного способа).
 struct SpriteProbe: View {
     var body: some View {
-        HStack(spacing: 3) {
-            Text("A").font(.system(size: 7))
-            Text(LiveSprite.epoch, style: .timer).font(.system(size: 8, design: .monospaced))
-            Text("B").font(.system(size: 7))
-            Text("05").font(.custom("BulkDance", size: 18))
-            Text("C").font(.custom("BulkDance", size: 7))
-            Text(LiveSprite.epoch, style: .timer).font(.custom("BulkDance", size: 18)).lineLimit(1).fixedSize()
-            Text("D").font(.system(size: 7))
-            LiveSprite(action: .dance, height: 18)
+        VStack(alignment: .trailing, spacing: 2) {
+            HStack(spacing: 3) {
+                Text("A").font(.system(size: 7))
+                Text(LiveSprite.epoch, style: .timer).font(.system(size: 8, design: .monospaced))
+                Text("B").font(.system(size: 7))
+                Text("05").font(.custom("BulkDance", size: 18))
+                Text("C").font(.system(size: 7))
+                Text(LiveSprite.epoch, style: .timer).font(.custom("BulkDance", size: 18)).lineLimit(1).fixedSize()
+                Text("D").font(.system(size: 7))
+                LiveSprite(action: .dance, height: 18)
+            }
+            HStack(spacing: 3) {
+                Text("E").font(.system(size: 7))
+                LayeredSprite(action: .dance, height: 26, live: false)
+                Text("F").font(.system(size: 7))
+                LayeredSprite(action: .dance, height: 26)
+            }
         }
         .foregroundStyle(Color.white.opacity(0.8))
         .padding(3)

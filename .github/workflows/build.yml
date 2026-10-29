@@ -17,9 +17,11 @@ jobs:
             Shared/BulkModel.swift Shared/BulkViews.swift Shared/Flipbook.swift Tools/RenderFrames.swift -o render
           ./render frames App/Assets.xcassets/AppIcon.appiconset/icon.png
           python3 -m venv .venv
-          .venv/bin/pip install -q fonttools
+          .venv/bin/pip install -q fonttools pillow
           .venv/bin/python Tools/make_fonts.py frames Widget/Fonts
-          ls -la Widget/Fonts
+          brew install potrace
+          .venv/bin/python Tools/make_layer_fonts.py frames Widget/Fonts
+          ls Widget/Fonts | wc -l
           ls -la frames | head -5
 
       - uses: actions/upload-artifact@v4
@@ -35,6 +37,11 @@ jobs:
         run: |
           brew install xcodegen
           xcodegen generate
+          # слои-шрифты (.otf) дописываем в список шрифтов виджета
+          for f in Widget/Fonts/*.otf; do
+            /usr/libexec/PlistBuddy -c "Add :UIAppFonts: string $(basename "$f")" Widget/Info.plist
+          done
+          /usr/libexec/PlistBuddy -c "Print :UIAppFonts" Widget/Info.plist | wc -l
 
       - name: Build (unsigned)
         run: |
