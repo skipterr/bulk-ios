@@ -18,12 +18,14 @@ jobs:
 
       - name: Inspect SDK (clock hand rotation)
         run: |
-          xcodebuild -version
-          SDK=$(xcrun --sdk iphoneos --show-sdk-path)
-          echo "SDK: $SDK"
-          grep -rhoE "[A-Za-z_]*[Cc]lockHand[A-Za-z_]*" "$SDK/System/Library/Frameworks" 2>/dev/null | sort | uniq -c | head -40 || true
-          grep -rlE "[Cc]lockHand" "$SDK/System/Library/Frameworks" 2>/dev/null | head -20 || true
-          grep -rh -B2 -A6 "func _clockHandRotationEffect" "$SDK/System/Library/Frameworks" 2>/dev/null | head -60 || true
+          ls -d /Applications/Xcode*.app
+          for X in /Applications/Xcode_26*.app; do
+            [ -d "$X" ] || continue
+            SDK=$(ls -d "$X"/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS*.sdk | head -1)
+            echo "=== $X -> $SDK"
+            grep -rlE "[Cc]lockHand" "$SDK/System/Library/Frameworks" 2>/dev/null | head -10 || true
+            grep -rh -B2 -A6 "func _clockHandRotationEffect" "$SDK/System/Library/Frameworks" 2>/dev/null | head -40 || true
+          done
 
       - name: Build (unsigned)
         run: |
