@@ -11,8 +11,8 @@ struct FaceView: View {
     var body: some View {
         Canvas { ctx, size in
             let w = size.width, h = size.height
-            let line = Color(white: 0.93)
-            let ew = w * 0.2, eh = h * 0.36
+            let line = Color(white: 0.08)
+            let ew = w * 0.17, eh = h * 0.24
             let lw = max(1.4, w * 0.045)
             let stroke = StrokeStyle(lineWidth: lw, lineCap: .round, lineJoin: .round)
 
@@ -25,10 +25,10 @@ struct FaceView: View {
             var ectx = ctx
             if glow { ectx.addFilter(.shadow(color: Color.white.opacity(0.9), radius: 3)) }
 
-            // глаза крупные, близко посажены и торчат над макушкой
-            for (i, cx) in [w * 0.32, w * 0.68].enumerated() {
+            // глаза небольшие, близко посажены, в верхней части тела
+            for (i, cx) in [w * 0.35, w * 0.65].enumerated() {
                 let side: CGFloat = i == 0 ? -1 : 1
-                let cy = h * 0.24
+                let cy = h * 0.3
                 switch eyes {
                 case .closed:
                     var p = Path()
@@ -64,8 +64,8 @@ struct FaceView: View {
                     let ew2 = ew * k, eh2 = eh * k
                     let eyeRect = CGRect(x: cx - ew2, y: cy - eh2, width: ew2 * 2, height: eh2 * 2)
                     ectx.fill(Path(ellipseIn: eyeRect), with: .color(.white))
-                    ctx.stroke(Path(ellipseIn: eyeRect), with: .color(Color(white: 0.15)), lineWidth: 1)
-                    let pr = eyes == .wide ? ew2 * 0.3 : ew2 * 0.42
+                    ctx.stroke(Path(ellipseIn: eyeRect), with: .color(Color(white: 0.08)), lineWidth: 1.5)
+                    let pr = eyes == .wide ? ew2 * 0.34 : ew2 * 0.5
                     ctx.fill(Path(ellipseIn: CGRect(x: cx - pr, y: cy - pr + eh2 * 0.1, width: pr * 2, height: pr * 2)), with: .color(.black))
                     let hr = pr * 0.32
                     ctx.fill(Path(ellipseIn: CGRect(x: cx - pr * 0.35 - hr, y: cy - pr * 0.35 + eh2 * 0.1 - hr, width: hr * 2, height: hr * 2)), with: .color(.white))
@@ -79,8 +79,8 @@ struct FaceView: View {
             }
 
             // рот
-            let mx = w * 0.5, my = h * 0.86, mw = w * 0.1
-            let mouthFill = Color(red: 0.44, green: 0.12, blue: 0.18)
+            let mx = w * 0.5, my = h * 0.82, mw = w * 0.12
+            let mouthFill = Color(white: 0.08)
             let tongue = Color(red: 0.94, green: 0.43, blue: 0.51)
             switch mouth {
             case .smile:
@@ -102,8 +102,8 @@ struct FaceView: View {
                 ctx.fill(Path(ellipseIn: CGRect(x: mx - mw * 0.5, y: my + mw * 0.3, width: mw, height: mw * 0.45)), with: .color(tongue))
             case .flat:
                 var p = Path()
-                p.move(to: CGPoint(x: mx - mw * 0.6, y: my))
-                p.addLine(to: CGPoint(x: mx + mw * 0.6, y: my))
+                p.move(to: CGPoint(x: mx - mw * 0.6, y: my - mw * 0.1))
+                p.addLine(to: CGPoint(x: mx + mw * 0.6, y: my + mw * 0.15))
                 ctx.stroke(p, with: .color(line), style: stroke)
             case .frown:
                 var p = Path()
@@ -186,8 +186,8 @@ struct BlobShape: Shape {
         for i in 0...60 {
             let a = Double(i) / 60 * 2 * Double.pi
             let c = cos(a), s = sin(a)
-            let bump = 1 + 0.05 * sin(a * 2 + 1.3) + 0.035 * sin(a * 3 + 0.4)
-            let x = cx + c * rx * bump * (1 + 0.1 * s)
+            let bump = 1 + 0.03 * sin(a * 2 + 1.3) + 0.02 * sin(a * 3 + 0.4)
+            let x = cx + c * rx * bump * (1 + 0.04 * s)
             let y = min(cy + s * ry * bump, Double(rect.maxY))
             if i == 0 { p.move(to: CGPoint(x: x, y: y)) } else { p.addLine(to: CGPoint(x: x, y: y)) }
         }
@@ -211,7 +211,7 @@ struct BulkBody: View {
             let lh = leftHand(w: w, h: h), rh = rightHand(w: w, h: h)
             ZStack {
                 BlobShape().fill(bodyFill(w: w))
-                BlobShape().stroke(rim, lineWidth: 1.2)
+                BlobShape().stroke(rim, lineWidth: 2)
                 FaceView(eyes: eyes, mouth: mouth, glow: dark, blush: blush)
                     .frame(width: w * 0.6, height: h * 0.62).position(x: w * 0.5, y: h * 0.4)
                 if holding == .bottle {
@@ -228,17 +228,17 @@ struct BulkBody: View {
         }
     }
 
-    private var rim: Color { Color(white: 0.15).opacity(0.9) }
+    private var rim: Color { Color(white: 0.07) }
 
     // матовый серый, как у кляксы
     private var baseColor: Color {
-        if angry { return Color(red: 0.55, green: 0.38, blue: 0.4) }
-        return dark ? Color(white: 0.2) : Color(white: 0.5)
+        if angry { return Color(red: 0.55, green: 0.4, blue: 0.42) }
+        return dark ? Color(white: 0.2) : Color(white: 0.47)
     }
 
     private func bodyFill(w: CGFloat) -> RadialGradient {
-        let top = angry ? Color(red: 0.66, green: 0.48, blue: 0.5) : Color(white: dark ? 0.24 : 0.58)
-        let low = Color(white: dark ? 0.12 : 0.38)
+        let top = angry ? Color(red: 0.62, green: 0.47, blue: 0.49) : Color(white: dark ? 0.23 : 0.52)
+        let low = Color(white: dark ? 0.15 : 0.42)
         return RadialGradient(colors: [top, baseColor, low], center: UnitPoint(x: 0.4, y: 0.2),
                               startRadius: 1, endRadius: w * 0.75)
     }
@@ -278,7 +278,7 @@ struct LiveSprite: View {
     let action: BulkAction
     let height: CGFloat
 
-    private static let epoch = Date(timeIntervalSince1970: 1_700_000_000)
+    static let epoch = Date(timeIntervalSince1970: 1_700_000_000)
 
     private var fontName: String {
         "Bulk" + action.rawValue.prefix(1).uppercased() + action.rawValue.dropFirst()
@@ -291,6 +291,26 @@ struct LiveSprite: View {
             .fixedSize()
             .frame(width: height * 1.4, height: height, alignment: .trailing)
             .clipped()
+    }
+}
+
+/// Временный тестовый блок: A — обычный секундомер, B — цифры шрифтом-кадрами,
+/// C — секундомер шрифтом-кадрами целиком, D — то же с обрезкой до последней цифры.
+struct SpriteProbe: View {
+    var body: some View {
+        HStack(spacing: 3) {
+            Text("A").font(.system(size: 7))
+            Text(LiveSprite.epoch, style: .timer).font(.system(size: 8, design: .monospaced))
+            Text("B").font(.system(size: 7))
+            Text("05").font(.custom("BulkDance", size: 18))
+            Text("C").font(.custom("BulkDance", size: 7))
+            Text(LiveSprite.epoch, style: .timer).font(.custom("BulkDance", size: 18)).lineLimit(1).fixedSize()
+            Text("D").font(.system(size: 7))
+            LiveSprite(action: .dance, height: 18)
+        }
+        .foregroundStyle(Color.white.opacity(0.8))
+        .padding(3)
+        .background(Color.black.opacity(0.3))
     }
 }
 
@@ -443,8 +463,8 @@ struct BulkScene: View {
         let floorY = h * 0.86
         let lampX = w * 0.68
         let bulbY = h * 0.2
-        let bodyH = h * 0.32
-        let bodyW = bodyH * 1.6
+        let bodyH = h * 0.38
+        let bodyW = bodyH * 0.95
         let pose = action.pose
         let bx: CGFloat = pose.lift ? lampX : w * pose.x
         let bottomY: CGFloat = pose.lift ? bulbY + 10 + bodyH * pose.sy : floorY
@@ -463,8 +483,21 @@ struct BulkScene: View {
                 .frame(width: bodyW * (pose.lift ? 0.6 : 1), height: 5)
                 .position(x: bx, y: floorY + 1)
 
-            LiveSprite(action: action, height: bodyH * 2)
-                .position(x: bx, y: bottomY - bodyH)
+            BulkBody(eyes: drunkLook ? .drunk : action.eyes,
+                     mouth: drunkLook ? .wavy : action.mouth,
+                     dark: dark,
+                     angry: action == .mad || action == .swear,
+                     arms: pose.arms,
+                     holding: action.holding,
+                     blush: min(1, tipsy) * 0.5)
+                .frame(width: bodyW * pose.sx, height: bodyH * pose.sy)
+                .rotationEffect(.degrees(pose.tilt + (drunkLook ? 8 : 0)), anchor: .bottom)
+                .position(x: bx, y: bottomY - bodyH * pose.sy / 2)
+
+            // ТЕСТ: проверяем, рисует ли iOS кадры из шрифта в виджете
+            SpriteProbe()
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                .padding(6)
 
             effects(bx: bx, topY: bottomY - bodyH * pose.sy, bodyW: bodyW)
 

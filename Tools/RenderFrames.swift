@@ -10,7 +10,7 @@ struct BulkSprite: View {
 
     var body: some View {
         let pose = action.pose
-        let bodyW: CGFloat = 64, bodyH: CGFloat = 40
+        let bodyW: CGFloat = 50, bodyH: CGFloat = 52
         BulkBody(eyes: f.eyes ?? action.eyes,
                  mouth: f.mouth ?? action.mouth,
                  dark: action == .inDark || action == .scared,

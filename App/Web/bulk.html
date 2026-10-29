@@ -75,7 +75,7 @@ const rgb = (c, a = 1) => `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${a})`;
 const ease = (cur, target, k, dt) => cur + (target - cur) * Math.min(1, k * dt);
 
 const COL = {
-  hi: [168, 168, 174], mid: [128, 128, 134], lo: [86, 86, 92],
+  hi: [140, 140, 146], mid: [120, 120, 126], lo: [98, 98, 104],
   dark: [6, 6, 9], angry: [190, 50, 56], ink: [22, 25, 36],
   shoe: [196, 64, 62], sole: [232, 230, 224], glass: [70, 140, 96]
 };
@@ -121,8 +121,8 @@ const NAMES = {
 // ---------- мир ----------
 const lamp = { x: 0, len: 0, on: true, hasBulb: true, level: 1, flick: 0, swing: 0, swingV: 0, bulbRot: 0 };
 const shoe = { x: 0, y: 0, vx: 0, vy: 0, rot: 0, vr: 0, kickT: 0, hitCD: 0 };
-// пропорции тела: приплюснутая клякса
-const RX_K = 1.15, RY_K = 0.86;
+// пропорции тела: круглая клякса, чуть выше, чем шире
+const RX_K = 1.0, RY_K = 1.05;
 const REST = { l: [-1.02, 0.28], r: [1.02, 0.28] };
 const BULB_POSE = { l: [-0.38, 0.12], r: [0.38, 0.12] };
 const b = {
@@ -823,8 +823,8 @@ function bodyPath(rx, ry) {
     const a = i / n * Math.PI * 2, c = Math.cos(a), s = Math.sin(a);
     const w = 1 + 0.022 * Math.sin(a * 3 + T * 2.6) + 0.016 * Math.sin(a * 5 - T * 1.9);
     // клякса: неровный край, низ чуть шире верха
-    const bump = 1 + 0.05 * Math.sin(a * 2 + 1.3) + 0.035 * Math.sin(a * 3 + 0.4);
-    const x = c * rx * w * bump * (1 + 0.1 * s);
+    const bump = 1 + 0.03 * Math.sin(a * 2 + 1.3) + 0.02 * Math.sin(a * 3 + 0.4);
+    const x = c * rx * w * bump * (1 + 0.04 * s);
     let y = -ry + s * ry * w * bump;
     if (y > 0) y = 0;
     i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
@@ -855,7 +855,7 @@ function drawBlob(lv) {
   bodyPath(rx, ry);
   ctx.fillStyle = g; ctx.fill();
   // контурный свет, чтобы чёрное тело не терялось в темноте
-  ctx.strokeStyle = 'rgba(38,38,44,.9)'; ctx.lineWidth = Math.max(1.5, R * 0.04); ctx.stroke();
+  ctx.strokeStyle = 'rgba(17,17,20,.95)'; ctx.lineWidth = Math.max(2, R * 0.07); ctx.stroke();
 
   // едва заметный блик — тело матовое
   ctx.fillStyle = `rgba(255,255,255,${0.08 * la})`;
@@ -867,11 +867,11 @@ function drawBlob(lv) {
 }
 
 function drawFace(rx, ry, lv, bodyCol) {
-  // глаза крупные, близко посажены и торчат над макушкой
-  const fx = b.look.x * rx * 0.18, fy = -ry * 1.45 + b.look.y * ry * 0.1;
-  const ex = rx * 0.24, ew = rx * 0.22, eh = ry * 0.34;
+  // глаза небольшие, близко посажены, в верхней части тела
+  const fx = b.look.x * rx * 0.18, fy = -ry * 1.4 + b.look.y * ry * 0.1;
+  const ex = rx * 0.21, ew = rx * 0.2, eh = ry * 0.21;
   const ink = rgb(COL.ink);
-  const line = 'rgb(226,231,242)', mouthFill = 'rgb(112,30,46)';
+  const line = '#141417', mouthFill = '#151518';
   const dark = lv < 0.35;
   const blinking = b.blinkT > 0 && (b.eyes === 'open' || b.eyes === 'wide' || b.eyes === 'angry');
   ctx.lineCap = 'round'; ctx.lineJoin = 'round';
@@ -900,11 +900,11 @@ function drawFace(rx, ry, lv, bodyCol) {
     else ctx.ellipse(x, y, w, h, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.shadowBlur = 0;
-    ctx.strokeStyle = 'rgba(38,38,44,.9)'; ctx.lineWidth = Math.max(1.2, R * 0.035); ctx.stroke();
+    ctx.strokeStyle = '#141417'; ctx.lineWidth = Math.max(1.5, R * 0.045); ctx.stroke();
     let px = b.look.x * w * 0.4, py = b.look.y * h * 0.35;
     if (kind === 'drunk') { px += s * w * 0.25; py = h * 0.4; }
     if (kind === 'sleepy') py = h * 0.45;
-    const pr = kind === 'wide' ? w * 0.3 : w * 0.42;
+    const pr = kind === 'wide' ? w * 0.34 : w * 0.5;
     ctx.fillStyle = ink;
     ctx.beginPath(); ctx.arc(x + px, y + py, pr, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = 'rgba(255,255,255,.9)';
@@ -923,7 +923,7 @@ function drawFace(rx, ry, lv, bodyCol) {
   }
 
   // рот
-  const mx = fx, my = fy + eh * 1.6, mw = rx * 0.14;
+  const mx = fx, my = fy + eh * 2.8, mw = rx * 0.17;
   ctx.strokeStyle = line; ctx.fillStyle = mouthFill; ctx.lineWidth = Math.max(2, R * 0.06);
   switch (b.mouth) {
     case 'smile': ctx.beginPath(); ctx.arc(mx, my - mw * 0.55, mw, 0.2 * Math.PI, 0.8 * Math.PI); ctx.stroke(); break;
@@ -935,7 +935,7 @@ function drawFace(rx, ry, lv, bodyCol) {
     case 'wide':
       ctx.beginPath(); ctx.ellipse(mx, my + mw * 0.3, mw * 0.85, mw * 0.75, 0, 0, Math.PI * 2); ctx.fill();
       ctx.fillStyle = 'rgb(240,110,130)'; ctx.beginPath(); ctx.ellipse(mx, my + mw * 0.7, mw * 0.5, mw * 0.25, 0, 0, Math.PI * 2); ctx.fill(); break;
-    case 'flat': ctx.beginPath(); ctx.moveTo(mx - mw * 0.6, my); ctx.lineTo(mx + mw * 0.6, my); ctx.stroke(); break;
+    case 'flat': ctx.beginPath(); ctx.moveTo(mx - mw * 0.6, my - mw * 0.1); ctx.lineTo(mx + mw * 0.6, my + mw * 0.15); ctx.stroke(); break;
     case 'frown': ctx.beginPath(); ctx.arc(mx, my + mw * 0.75, mw * 0.8, 1.2 * Math.PI, 1.8 * Math.PI); ctx.stroke(); break;
     case 'wavy':
       ctx.beginPath();
