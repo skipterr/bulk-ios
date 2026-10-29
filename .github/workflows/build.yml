@@ -20,6 +20,15 @@ jobs:
           .venv/bin/pip install -q fonttools
           .venv/bin/python Tools/make_fonts.py frames Widget/Fonts
           ls -la Widget/Fonts
+          ls -la frames | head -5
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: frames-preview
+          path: |
+            frames/chill_0.png
+            frames/dance_3.png
+            frames/sleep_0.png
 
       - name: Generate Xcode project
         run: |

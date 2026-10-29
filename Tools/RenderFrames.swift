@@ -29,15 +29,25 @@ struct BulkSprite: View {
 struct RenderFrames {
     @MainActor
     static func main() throws {
+        _ = NSApplication.shared
         let out = URL(fileURLWithPath: CommandLine.arguments[1])
         try FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
+        // На облачном Mac нет видеокарты, поэтому рисуем через AppKit, а не ImageRenderer (он требует Metal).
+        let size = NSRect(x: 0, y: 0, width: 336, height: 240)
         for action in BulkAction.allCases {
             for i in 0..<10 {
-                let renderer = ImageRenderer(content: BulkSprite(action: action, f: action.framePose(i, of: 10, drunk: false)))
-                renderer.scale = 3
-                guard let cg = renderer.cgImage,
-                      let png = NSBitmapImageRep(cgImage: cg).representation(using: .png, properties: [:]) else {
+                let sprite = BulkSprite(action: action, f: action.framePose(i, of: 10, drunk: false))
+                    .scaleEffect(3, anchor: .topLeading)
+                    .frame(width: 336, height: 240, alignment: .topLeading)
+                let host = NSHostingView(rootView: sprite)
+                host.frame = size
+                host.layoutSubtreeIfNeeded()
+                guard let rep = host.bitmapImageRepForCachingDisplay(in: size) else {
                     throw NSError(domain: "render", code: 1, userInfo: [NSLocalizedDescriptionKey: "\(action) \(i)"])
+                }
+                host.cacheDisplay(in: size, to: rep)
+                guard let png = rep.representation(using: .png, properties: [:]) else {
+                    throw NSError(domain: "render", code: 2, userInfo: [NSLocalizedDescriptionKey: "\(action) \(i)"])
                 }
                 try png.write(to: out.appendingPathComponent("\(action.rawValue)_\(i).png"))
             }
