@@ -8,6 +8,7 @@ struct BulkEntry: TimelineEntry {
     let phrase: String
     let lightOn: Bool
     let tipsy: Double
+    var frame: Int = 0
 }
 
 struct BulkProvider: TimelineProvider {
@@ -23,10 +24,13 @@ struct BulkProvider: TimelineProvider {
         completion(Timeline(entries: Self.makeEntries(now: .now), policy: .atEnd))
     }
 
-    // План на ближайшие полчаса-час: каждые 2,5–5 минут Бульк сам меняет занятие.
+    // План на ближайшие полчаса: каждые 3 секунды новая поза (iOS плавно перетекает между ними),
+    // каждые 30–60 секунд Бульк сам меняет занятие.
+    static let frameStep: TimeInterval = 3
+
     static func makeEntries(now: Date) -> [BulkEntry] {
         var s = BulkStore.load()
-        let fresh = now.timeIntervalSince(s.since) < 150
+        let fresh = now.timeIntervalSince(s.since) < 60
         if !fresh {
             s.set(BulkBrain.next(after: s.action, lightOn: s.lightOn), at: now)
             BulkStore.save(s)
@@ -36,14 +40,22 @@ struct BulkProvider: TimelineProvider {
         var light = s.lightOn
         var tipsy = s.tipsyNow(now)
         var t = now
+        let end = now.addingTimeInterval(30 * 60)
         var entries: [BulkEntry] = []
-        for i in 0..<12 {
-            entries.append(BulkEntry(date: t, action: action, phrase: phrase, lightOn: light, tipsy: tipsy))
-            t = t.addingTimeInterval(i == 0 && fresh ? 90 : Double.random(in: 150...300))
+        while t < end {
+            let segment = Double.random(in: 30...60)
+            let segmentEnd = t.addingTimeInterval(segment)
+            var frame = 0
+            while t < segmentEnd {
+                entries.append(BulkEntry(date: t, action: action, phrase: frame < 3 ? phrase : "",
+                                         lightOn: light, tipsy: tipsy, frame: frame))
+                t = t.addingTimeInterval(frameStep)
+                frame += 1
+            }
             action = BulkBrain.next(after: action, lightOn: light)
             phrase = action.phrases.randomElement() ?? ""
             light = action.lightAfter(light)
-            tipsy = action == .drink ? min(1.6, tipsy + 0.6) : max(0, tipsy - 0.15)
+            tipsy = action == .drink ? min(1.6, tipsy + 0.6) : max(0, tipsy - 0.05)
         }
         return entries
     }
@@ -54,8 +66,8 @@ struct BulkWidgetView: View {
 
     // Без кнопок: на виджете Бульк просто живёт. Тап открывает приложение.
     var body: some View {
-        BulkScene(action: entry.action, phrase: entry.phrase, lightOn: entry.lightOn, tipsy: entry.tipsy)
-            .animation(.spring(duration: 0.6), value: entry.action)
+        BulkScene(action: entry.action, phrase: entry.phrase, lightOn: entry.lightOn, tipsy: entry.tipsy, frame: entry.frame)
+            .animation(.spring(duration: 1.2, bounce: 0.3), value: entry.date)
     }
 }
 

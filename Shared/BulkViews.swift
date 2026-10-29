@@ -491,6 +491,7 @@ struct BulkScene: View {
     let phrase: String
     let lightOn: Bool
     let tipsy: Double
+    var frame: Int = 0
 
     var body: some View {
         GeometryReader { geo in
@@ -525,21 +526,17 @@ struct BulkScene: View {
                 .frame(width: bodyW * (pose.lift ? 0.6 : 1), height: 5)
                 .position(x: bx, y: floorY + 1)
 
-            BulkBody(eyes: drunkLook ? .drunk : action.eyes,
-                     mouth: drunkLook ? .wavy : action.mouth,
+            let f = action.framePose(frame % action.frameCount, of: action.frameCount, drunk: drunkLook)
+            BulkBody(eyes: f.eyes ?? (drunkLook ? .drunk : action.eyes),
+                     mouth: f.mouth ?? (drunkLook ? .wavy : action.mouth),
                      dark: dark,
                      angry: action == .mad || action == .swear,
-                     arms: pose.arms,
+                     arms: f.arms ?? pose.arms,
                      holding: action.holding,
                      blush: min(1, tipsy) * 0.5)
-                .frame(width: bodyW * pose.sx, height: bodyH * pose.sy)
-                .rotationEffect(.degrees(pose.tilt + (drunkLook ? 8 : 0)), anchor: .bottom)
-                .position(x: bx, y: bottomY - bodyH * pose.sy / 2)
-
-            // ТЕСТ: проверяем, рисует ли iOS кадры из шрифта в виджете
-            SpriteProbe()
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
-                .padding(6)
+                .frame(width: bodyW * pose.sx * CGFloat(f.sx), height: bodyH * pose.sy * CGFloat(f.sy))
+                .rotationEffect(.degrees(pose.tilt + f.tilt + (drunkLook ? 8 : 0)), anchor: .bottom)
+                .position(x: bx + CGFloat(f.dx) * 2, y: bottomY - bodyH * pose.sy * CGFloat(f.sy) / 2 + CGFloat(f.dy) * 2)
 
             effects(bx: bx, topY: bottomY - bodyH * pose.sy, bodyW: bodyW)
 
