@@ -158,6 +158,20 @@ struct HighTopShape: Shape {
     }
 }
 
+// Свуш на боку: острый кончик к пятке, загиб у носка.
+struct SwooshShape: Shape {
+    func path(in r: CGRect) -> Path {
+        let w = r.width, h = r.height
+        var p = Path()
+        p.move(to: CGPoint(x: w * 0.14, y: h * 0.36))
+        p.addQuadCurve(to: CGPoint(x: w * 0.82, y: h * 0.6), control: CGPoint(x: w * 0.5, y: h * 0.82))
+        p.addLine(to: CGPoint(x: w * 0.86, y: h * 0.47))
+        p.addQuadCurve(to: CGPoint(x: w * 0.14, y: h * 0.36), control: CGPoint(x: w * 0.5, y: h * 0.68))
+        p.closeSubpath()
+        return p
+    }
+}
+
 struct ShoeView: View {
     var dark: Bool
     var body: some View {
@@ -173,8 +187,7 @@ struct ShoeView: View {
                     red.frame(width: w * 0.36).position(x: w * 0.18, y: h / 2)          // пятка
                     red.frame(width: w * 0.32).position(x: w * 0.88, y: h / 2)          // носок
                     red.frame(height: h * 0.2).position(x: w / 2, y: h * 0.1)           // верх голенища
-                    Capsule().fill(black).frame(width: w * 0.5, height: h * 0.16)       // боковая вставка
-                        .rotationEffect(.degrees(-18)).position(x: w * 0.55, y: h * 0.58)
+                    SwooshShape().fill(black)                                           // свуш
                 }
                 .frame(width: w, height: h)
                 .clipShape(HighTopShape())

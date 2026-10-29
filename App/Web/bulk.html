@@ -856,11 +856,12 @@ function drawShoe(lv) {
   ctx.fillRect(-sw, -sh, sw * 0.78, sh * 2);              // пятка
   ctx.fillRect(sw * 0.2, -sh, sw, sh * 2);                // носок
   ctx.fillRect(-sw, -sh, sw * 2, sh * 0.22);              // верх голенища
-  ctx.fillStyle = black;                                  // боковая вставка
+  ctx.fillStyle = black;                                  // свуш: острый кончик к пятке, загиб у носка
   ctx.beginPath();
-  ctx.moveTo(-sw * 0.3, soleTop - sh * 0.05);
-  ctx.quadraticCurveTo(sw * 0.05, soleTop - sh * 0.35, sw * 0.42, -sh * 0.12);
-  ctx.quadraticCurveTo(sw * 0.1, soleTop - sh * 0.15, -sw * 0.3, soleTop - sh * 0.05);
+  ctx.moveTo(-sw * 0.36, soleTop - sh * 0.44);
+  ctx.quadraticCurveTo(sw * 0.02, soleTop - sh * 0.0, sw * 0.32, soleTop - sh * 0.2);
+  ctx.lineTo(sw * 0.36, soleTop - sh * 0.32);
+  ctx.quadraticCurveTo(sw * 0.02, soleTop - sh * 0.14, -sw * 0.36, soleTop - sh * 0.44);
   ctx.fill();
   ctx.restore();
   ctx.strokeStyle = 'rgba(17,17,20,.9)'; ctx.lineWidth = 1.5; ctx.stroke();
