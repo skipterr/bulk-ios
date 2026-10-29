@@ -16,17 +16,6 @@ jobs:
           brew install xcodegen
           xcodegen generate
 
-      - name: Inspect SDK (clock hand rotation)
-        run: |
-          ls -d /Applications/Xcode*.app
-          for X in /Applications/Xcode_26*.app; do
-            [ -d "$X" ] || continue
-            SDK=$(ls -d "$X"/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS*.sdk | head -1)
-            echo "=== $X -> $SDK"
-            grep -rlE "[Cc]lockHand" "$SDK/System/Library/Frameworks" 2>/dev/null | head -10 || true
-            grep -rh -B2 -A6 "func _clockHandRotationEffect" "$SDK/System/Library/Frameworks" 2>/dev/null | head -40 || true
-          done
-
       - name: Build (unsigned)
         run: |
           xcodebuild -project Bulk.xcodeproj -target Bulk -configuration Release -sdk iphoneos \

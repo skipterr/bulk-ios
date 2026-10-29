@@ -5,8 +5,10 @@ import WidgetKit
 // без участия приложения. На этом и держится движение Булька.
 
 extension View {
+    // Системное вращение (_clockHandRotationEffect) скрыто из SDK Xcode 16.4–26.3,
+    // поэтому пока заглушка: показывается первый кадр. Вернуть, когда найдём рабочий способ.
     func clockSpin(_ period: TimeInterval, anchor: UnitPoint = .center) -> some View {
-        _clockHandRotationEffect(.custom(period), in: .current, anchor: anchor)
+        self
     }
 }
 
