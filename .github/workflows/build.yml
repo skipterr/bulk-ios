@@ -15,7 +15,7 @@ jobs:
         run: |
           xcrun --sdk macosx swiftc -parse-as-library -O -target "$(uname -m)-apple-macos14" \
             Shared/BulkModel.swift Shared/BulkViews.swift Shared/Flipbook.swift Tools/RenderFrames.swift -o render
-          ./render frames
+          ./render frames App/Assets.xcassets/AppIcon.appiconset/icon.png
           python3 -m venv .venv
           .venv/bin/pip install -q fonttools
           .venv/bin/python Tools/make_fonts.py frames Widget/Fonts
@@ -29,6 +29,7 @@ jobs:
             frames/chill_0.png
             frames/dance_3.png
             frames/sleep_0.png
+            App/Assets.xcassets/AppIcon.appiconset/icon.png
 
       - name: Generate Xcode project
         run: |

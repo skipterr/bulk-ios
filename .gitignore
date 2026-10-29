@@ -5,6 +5,7 @@ Payload/
 App/Info.plist
 Widget/Info.plist
 Widget/Fonts/
+App/Assets.xcassets/AppIcon.appiconset/icon.png
 frames/
 render
 .venv/

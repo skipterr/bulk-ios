@@ -1,8 +1,9 @@
 import SwiftUI
 import AppKit
 
-// Рисует по 10 кадров Булька на каждое занятие — из них потом собираются шрифты для виджета.
-// Запуск (на Mac): render <папка для png>
+// Рисует по 10 кадров Булька на каждое занятие (из них собираются шрифты для виджета)
+// и иконку приложения.
+// Запуск (на Mac): render <папка для кадров> [путь к icon.png]
 
 struct BulkSprite: View {
     let action: BulkAction
@@ -25,33 +26,58 @@ struct BulkSprite: View {
     }
 }
 
+struct AppIconView: View {
+    var body: some View {
+        ZStack {
+            Color(white: 0.16)
+            BulkBody(eyes: .open, mouth: .flat, dark: false, angry: false, arms: .rest, holding: .none, blush: 0)
+                .frame(width: 560, height: 590)
+                .offset(y: 70)
+        }
+        .frame(width: 1024, height: 1024)
+    }
+}
+
+// На облачном Mac нет видеокарты, поэтому рисуем через AppKit, а не ImageRenderer (он требует Metal).
+@MainActor
+func png<V: View>(_ view: V, width: CGFloat, height: CGFloat) throws -> Data {
+    let rect = NSRect(x: 0, y: 0, width: width, height: height)
+    let host = NSHostingView(rootView: view.frame(width: width, height: height, alignment: .topLeading))
+    host.frame = rect
+    host.layoutSubtreeIfNeeded()
+    guard let rep = host.bitmapImageRepForCachingDisplay(in: rect) else {
+        throw NSError(domain: "render", code: 1)
+    }
+    host.cacheDisplay(in: rect, to: rep)
+    guard let data = rep.representation(using: .png, properties: [:]) else {
+        throw NSError(domain: "render", code: 2)
+    }
+    return data
+}
+
 @main
 struct RenderFrames {
     @MainActor
     static func main() throws {
         _ = NSApplication.shared
-        let out = URL(fileURLWithPath: CommandLine.arguments[1])
+        let args = CommandLine.arguments
+        let out = URL(fileURLWithPath: args[1])
         try FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
-        // На облачном Mac нет видеокарты, поэтому рисуем через AppKit, а не ImageRenderer (он требует Metal).
-        let size = NSRect(x: 0, y: 0, width: 336, height: 240)
         for action in BulkAction.allCases {
             for i in 0..<10 {
                 let sprite = BulkSprite(action: action, f: action.framePose(i, of: 10, drunk: false))
                     .scaleEffect(3, anchor: .topLeading)
-                    .frame(width: 336, height: 240, alignment: .topLeading)
-                let host = NSHostingView(rootView: sprite)
-                host.frame = size
-                host.layoutSubtreeIfNeeded()
-                guard let rep = host.bitmapImageRepForCachingDisplay(in: size) else {
-                    throw NSError(domain: "render", code: 1, userInfo: [NSLocalizedDescriptionKey: "\(action) \(i)"])
-                }
-                host.cacheDisplay(in: size, to: rep)
-                guard let png = rep.representation(using: .png, properties: [:]) else {
-                    throw NSError(domain: "render", code: 2, userInfo: [NSLocalizedDescriptionKey: "\(action) \(i)"])
-                }
-                try png.write(to: out.appendingPathComponent("\(action.rawValue)_\(i).png"))
+                try png(sprite, width: 336, height: 240)
+                    .write(to: out.appendingPathComponent("\(action.rawValue)_\(i).png"))
             }
         }
         print("frames:", BulkAction.allCases.count * 10)
+
+        if args.count > 2 {
+            let iconURL = URL(fileURLWithPath: args[2])
+            try FileManager.default.createDirectory(at: iconURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try png(AppIconView(), width: 1024, height: 1024).write(to: iconURL)
+            print("icon:", iconURL.path)
+        }
     }
 }
