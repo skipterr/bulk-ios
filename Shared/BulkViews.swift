@@ -578,6 +578,8 @@ struct BulkScene: View {
     let tipsy: Double
     /// Время кадра в секундах — от него качается лампа и подрагивает кроссовок.
     var clock: Double = 0
+    /// Ближайший план («🔔 18:00 — тренировка»), пусто — планов нет.
+    var upcoming: String = ""
 
     // лампа качается всегда, сильнее — когда Бульк на ней висит
     private var lampSway: Double {
@@ -658,6 +660,16 @@ struct BulkScene: View {
             }
 
             // ВРЕМЕННО: в конце строки — диагностика общей памяти с приложением
+            if !upcoming.isEmpty {
+                Text(upcoming)
+                    .font(.system(size: 9, weight: .medium, design: .rounded))
+                    .foregroundStyle(Color.white.opacity(0.55))
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+                    .padding(.leading, 12)
+                    .padding(.bottom, 5)
+            }
+
             Text("Бульк · \(action.status)")
                 .font(.system(size: 9, weight: .medium, design: .rounded))
                 .foregroundStyle(Color.white.opacity(0.4))

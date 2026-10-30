@@ -7,6 +7,7 @@ struct BulkEntry: TimelineEntry {
     let frame: BulkFrame
     let phrase: String
     let tipsy: Double
+    var upcoming = ""        // строчка внизу: ближайший план
 }
 
 struct BulkProvider: TimelineProvider {
@@ -27,6 +28,12 @@ struct BulkProvider: TimelineProvider {
     // iOS плавно перетекает между ними. Занятия идут одно за другим без телепортов.
     // Больше ~600 кадров iOS не успевает построить — виджет становится серой заглушкой.
     static let frameStep: TimeInterval = 1.5
+
+    static let clock: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "HH:mm"
+        return f
+    }()
 
     static func makeEntries(now: Date) -> [BulkEntry] {
         var s = BulkStore.load()
@@ -54,9 +61,16 @@ struct BulkProvider: TimelineProvider {
                 plays += 1
                 let frames = BulkScript.frames(for: action, x: x, shoeX: shoe, light: light)
                 for (i, f) in frames.enumerated() {
-                    // пришло время напоминания — Бульк держит табличку 🔔
-                    let shown = s.reminder(at: t).map { "🔔 " + $0.text } ?? (i < 2 ? phrase : "")
-                    entries.append(BulkEntry(date: t, frame: f, phrase: shown, tipsy: tipsy))
+                    // пришло время напоминания — Бульк держит табличку 🔔;
+                    // за полчаса до — сам напоминает в облачке «через N мин»
+                    let next = s.nextReminder(after: t)
+                    let soon = next.flatMap { r -> String? in
+                        let mins = Int(ceil(r.at.timeIntervalSince(t) / 60))
+                        return mins <= 30 && i < 2 ? "через \(mins) мин: \(r.text)" : nil
+                    }
+                    let shown = s.reminder(at: t).map { "🔔 " + $0.text } ?? soon ?? (i < 2 ? phrase : "")
+                    let upcoming = next.map { "🔔 " + Self.clock.string(from: $0.at) + " — " + $0.text } ?? ""
+                    entries.append(BulkEntry(date: t, frame: f, phrase: shown, tipsy: tipsy, upcoming: upcoming))
                     t = t.addingTimeInterval(frameStep)
                 }
                 if let last = frames.last {
@@ -83,7 +97,8 @@ struct BulkWidgetView: View {
 
     // Без кнопок: на виджете Бульк просто живёт. Тап открывает приложение.
     var body: some View {
-        BulkScene(frame: entry.frame, phrase: entry.phrase, tipsy: entry.tipsy, clock: entry.date.timeIntervalSince1970)
+        BulkScene(frame: entry.frame, phrase: entry.phrase, tipsy: entry.tipsy, clock: entry.date.timeIntervalSince1970,
+                  upcoming: entry.upcoming)
             .animation(.spring(duration: 0.7, bounce: 0.25), value: entry.date)
     }
 }

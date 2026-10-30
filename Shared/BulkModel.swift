@@ -124,6 +124,11 @@ struct BulkState: Codable {
         reminders.first { date >= $0.at && date < $0.at.addingTimeInterval(30 * 60) }
     }
 
+    /// Ближайший план в следующие сутки (для строчки внизу виджета и «скоро»).
+    func nextReminder(after date: Date) -> Reminder? {
+        reminders.filter { $0.at > date && $0.at < date.addingTimeInterval(24 * 3600) }.min { $0.at < $1.at }
+    }
+
     // Хмель выветривается примерно за полчаса.
     func tipsyNow(_ date: Date = .now) -> Double {
         max(0, tipsy - date.timeIntervalSince(tipsyAt) / 1800)
