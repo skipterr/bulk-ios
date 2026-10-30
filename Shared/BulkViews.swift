@@ -662,7 +662,7 @@ struct BulkScene: View {
             }
 
             // ВРЕМЕННО: в конце строки — диагностика общей памяти с приложением
-            Text("Бульк · \(action.status)   [мост: \(SharedBridge.hasData ? "есть" : "пусто")]")
+            Text("Бульк · \(action.status)   [из прил.: \(BulkStore.appSeenVia.isEmpty ? "нет" : BulkStore.appSeenVia.joined(separator: "+")) · связка \(SharedKeychain.lastStatus)]")
                 .font(.system(size: 9, weight: .medium, design: .rounded))
                 .foregroundStyle(Color.white.opacity(0.4))
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)

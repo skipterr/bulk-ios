@@ -73,7 +73,7 @@ struct BulkProvider: TimelineProvider {
         // Запоминаем, где Бульк окажется, чтобы следующий план продолжился оттуда же.
         s.x = x
         s.shoeX = shoe
-        BulkStore.save(s)
+        BulkStore.save(s, writer: "widget")
         return entries
     }
 }

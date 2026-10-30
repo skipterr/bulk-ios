@@ -17,7 +17,7 @@ struct PokeIntent: AppIntent {
         } else {
             s.set(.poked, at: now)
         }
-        BulkStore.save(s)
+        BulkStore.save(s, writer: "widget")
         return .result()
     }
 }
@@ -28,7 +28,7 @@ struct DrinkIntent: AppIntent {
     func perform() async throws -> some IntentResult {
         var s = BulkStore.load()
         s.set(.drink, at: Date())
-        BulkStore.save(s)
+        BulkStore.save(s, writer: "widget")
         return .result()
     }
 }
@@ -46,7 +46,7 @@ struct LightIntent: AppIntent {
             s.lightOn = true
             s.phrase = "о, свет!"
         }
-        BulkStore.save(s)
+        BulkStore.save(s, writer: "widget")
         return .result()
     }
 }
@@ -57,7 +57,7 @@ struct KickIntent: AppIntent {
     func perform() async throws -> some IntentResult {
         var s = BulkStore.load()
         s.set(.kick, at: Date())
-        BulkStore.save(s)
+        BulkStore.save(s, writer: "widget")
         return .result()
     }
 }

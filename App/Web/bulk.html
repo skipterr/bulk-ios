@@ -140,7 +140,8 @@ const shoe = { x: 0, y: 0, vx: 0, vy: 0, rot: 0, vr: 0, kickT: 0, hitCD: 0 };
 // пропорции тела: круглая клякса, чуть выше, чем шире
 const RX_K = 1.0, RY_K = 1.05;
 const REST = { l: [-1.02, 0.28], r: [1.02, 0.28] };
-const BULB_POSE = { l: [-0.38, 0.12], r: [0.38, 0.12] };
+// лампочку держит внизу живота, чтобы не закрывала лицо
+const BULB_POSE = { l: [-0.42, 0.62], r: [0.42, 0.62] };
 const b = {
   x: 0, y: 0, vx: 0, vy: 0, ground: true, s: 1, sv: 0, sTarget: 1, puff: 0,
   dir: 1, tilt: 0, tiltT: 0, look: { x: 0, y: 0 }, lookT: { x: 0, y: 0 },
@@ -1201,7 +1202,7 @@ function drawHands(rx, ry, mid, lo, lv) {
     ctx.restore();
   }
   if (b.holdBulb) {
-    ctx.save(); ctx.translate((pts.l.x + pts.r.x) / 2, (pts.l.y + pts.r.y) / 2 - R * 0.15);
+    ctx.save(); ctx.translate((pts.l.x + pts.r.x) / 2, (pts.l.y + pts.r.y) / 2 + R * 0.1);
     drawBulbGlass(R * 0.3, 0.06);
     ctx.restore();
   }

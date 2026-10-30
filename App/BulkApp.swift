@@ -58,6 +58,8 @@ struct BulkWebView: UIViewRepresentable {
         if let url = Bundle.main.url(forResource: "bulk", withExtension: "html") {
             web.loadFileURL(url, allowingReadAccessTo: url.deletingLastPathComponent())
         }
+        // Как только страница создала поле ввода — убираем панель «‹ › Done» над клавиатурой.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { web.hideInputAccessoryBar() }
         return web
     }
 
@@ -93,7 +95,7 @@ struct BulkWebView: UIViewRepresentable {
                 s.lightOn = true
                 s.phrase = "о, свет!"
             }
-            BulkStore.save(s)
+            BulkStore.save(s, writer: "app")
             WidgetCenter.shared.reloadAllTimelines()
         }
 

@@ -19,7 +19,7 @@ enum Reminders {
         var s = BulkStore.load()
         s.reminders.removeAll { $0.at < Date().addingTimeInterval(-24 * 3600) }
         s.reminders.append(Reminder(text: text, at: date))
-        BulkStore.save(s)
+        BulkStore.save(s, writer: "app")
         WidgetCenter.shared.reloadAllTimelines()
 
         let center = UNUserNotificationCenter.current()

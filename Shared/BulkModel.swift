@@ -131,6 +131,8 @@ struct BulkState: Codable {
 
     /// true — действие пришло от тебя из приложения (виджет его ненадолго повторяет)
     var byUser = false
+    /// кто записал состояние: "app" или "widget" (для диагностики связи)
+    var writer = ""
 
     mutating func set(_ a: BulkAction, at date: Date, byUser: Bool = false) {
         self.byUser = byUser
@@ -148,29 +150,39 @@ struct BulkState: Codable {
 enum BulkStore {
     private static let key = "bulk.state.v1"
 
-    // Берём самое свежее состояние: из своей памяти или из общего буфера (там его оставляет приложение).
+    /// Диагностика: по каким каналам видно состояние, записанное приложением.
+    static var appSeenVia: [String] = []
+
+    // Берём самое свежее состояние из своей памяти и из общих каналов (буфер, связка ключей);
+    // напоминания собираем из всех.
     static func load() -> BulkState {
         let decoder = JSONDecoder()
-        let own = SharedGroup.defaults.data(forKey: key).flatMap { try? decoder.decode(BulkState.self, from: $0) }
-        let shared = SharedBridge.read().flatMap { try? decoder.decode(BulkState.self, from: $0) }
-        switch (own, shared) {
-        case let (a?, b?):
-            // свежее состояние побеждает, а напоминания берём из обоих
-            var newest = b.since > a.since ? b : a
-            for r in a.reminders + b.reminders where !newest.reminders.contains(r) {
-                newest.reminders.append(r)
-            }
-            return newest
-        case let (a?, nil): return a
-        case let (nil, b?): return b
-        default: return BulkState()
+        let sources: [(String, Data?)] = [
+            ("своё", SharedGroup.defaults.data(forKey: key)),
+            ("буфер", SharedBridge.read()),
+            ("связка", SharedKeychain.read())
+        ]
+        var states: [BulkState] = []
+        appSeenVia = []
+        for (name, data) in sources {
+            guard let data, let s = try? decoder.decode(BulkState.self, from: data) else { continue }
+            states.append(s)
+            if s.writer == "app" { appSeenVia.append(name) }
         }
+        guard var newest = states.max(by: { $0.since < $1.since }) else { return BulkState() }
+        for s in states {
+            for r in s.reminders where !newest.reminders.contains(r) { newest.reminders.append(r) }
+        }
+        return newest
     }
 
-    static func save(_ state: BulkState) {
-        if let data = try? JSONEncoder().encode(state) {
+    static func save(_ state: BulkState, writer: String) {
+        var s = state
+        s.writer = writer
+        if let data = try? JSONEncoder().encode(s) {
             SharedGroup.defaults.set(data, forKey: key)
             SharedBridge.write(data)
+            SharedKeychain.write(data)
         }
     }
 }
