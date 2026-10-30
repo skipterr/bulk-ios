@@ -83,6 +83,8 @@ struct BulkWebView: UIViewRepresentable {
                     fetch(dict)
                 case "saveMemory":
                     if let json = dict["json"] as? String { KeyVault.save(json, account: "memory") }
+                case "reminderDone":
+                    Reminders.markDone(hint: dict["hint"] as? String ?? "")
                 case "remind":
                     if let text = dict["text"] as? String, let at = dict["at"] as? String {
                         Reminders.add(text: text, at: at)

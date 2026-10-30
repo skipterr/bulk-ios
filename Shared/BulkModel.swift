@@ -103,6 +103,7 @@ enum BulkAction: String, Codable, CaseIterable {
 struct Reminder: Codable, Equatable {
     var text: String
     var at: Date
+    var id: String = UUID().uuidString   // он же id уведомления — чтобы отменить, если дело уже сделано
 }
 
 struct BulkState: Codable {

@@ -635,6 +635,7 @@ const BULK_PERSONA = `Ты Бульк — маленький серый круг
 Отвечай строго JSON: {"reply": "текст ответа", "action": "одно из: none, drink, sleep, dance, burp, swear, wave, jump, kick, unscrew, light_off, light_on, stare"}.
 action выбирай по смыслу: зовут выпить — drink, говорят спать — sleep, праздник или музыка — dance, злишься — swear, приветствие — wave, выключить свет — light_off, включить — light_on. Если ничего не подходит — none.
 Если хозяин рассказал о себе что-то, что стоит запомнить надолго (имя, близкие, работа, увлечения, планы, что любит и не любит), добавь в JSON поле "remember": "короткий факт от третьего лица, например: Хозяина зовут Марк". Потом сам вспоминай эти факты к месту.
+Если хозяин говорит, что уже сделал то, о чём ты напоминал (или собирался напомнить), похвали его и добавь поле "reminder_done": "пара ключевых слов этого дела".
 Если хозяин просит напомнить о чём-то, добавь в JSON поле "reminder": {"text": "короткий текст напоминания в твоём стиле", "at": "ГГГГ-ММ-ДДTЧЧ:ММ"} — местное время, считай от текущего момента. Если время не сказали — спроси в reply и reminder не добавляй. В остальных случаях "reminder" не нужен.`;
 
 function nowForPrompt() {
@@ -727,6 +728,9 @@ function performChat(out) {
     if (!chat.facts.includes(fact)) chat.facts.push(fact);
   }
   saveMemory();
+  if (out.reminder_done) {
+    try { window.webkit.messageHandlers.bulk.postMessage({ type: 'reminderDone', hint: String(out.reminder_done).slice(0, 80) }); } catch (_) {}
+  }
   const rem = out.reminder;
   if (rem && rem.text && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(String(rem.at || ''))) {
     try {
