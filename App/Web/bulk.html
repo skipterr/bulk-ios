@@ -735,6 +735,13 @@ chatForm.addEventListener('submit', async (e) => {
   const text = chatInput.value.trim();
   if (!text || chat.waiting) return;
   chatInput.value = '';
+  // секретная команда: Бульк заново знакомится (удобно показать друзьям)
+  if (text.toLowerCase().replace(/[!.\s]/g, '') === 'знакомство') {
+    chatInput.blur();
+    onboard.step = -1;
+    nextOnboard();
+    return;
+  }
   // ключи Gemini бывают старого вида (AIza…) и нового (AQ.…)
   const isKey = /^(AIza[\w-]{20,}|AQ\.[\w.-]{20,})$/.test(text);
   if (isKey || !geminiKey) {
@@ -813,12 +820,18 @@ const ONBOARD = [
   'Чтобы я мог болтать, нужен ключ Gemini: aistudio.google.com → Get API key. Вставь его в поле внизу 👇'
 ];
 const onboard = { step: -1 };
+// если ключ уже есть, последнюю фразу (про ключ) пропускаем
+function onboardTotal() { return geminiKey ? ONBOARD.length - 1 : ONBOARD.length; }
 function showOnboard() {
-  say(ONBOARD[onboard.step] + (onboard.step < ONBOARD.length - 1 ? '  ›' : ''), 600, true);
+  say(ONBOARD[onboard.step] + (onboard.step < onboardTotal() - 1 ? '  ›' : ''), 600, true);
 }
 function nextOnboard() {
   onboard.step++;
-  if (onboard.step >= ONBOARD.length) { onboard.step = -1; bubble = null; chatInput.focus(); return; }
+  if (onboard.step >= onboardTotal()) {
+    onboard.step = -1; bubble = null;
+    if (!geminiKey) chatInput.focus();
+    return;
+  }
   if (onboard.step % 2 === 0 && b.ground && free()) hop(R * 6);
   showOnboard();
 }
