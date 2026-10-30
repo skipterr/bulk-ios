@@ -619,7 +619,7 @@ struct BulkScene: View {
 
             ShoeView(dark: dark)
                 .frame(width: 26, height: 17)
-                .rotationEffect(.degrees(frame.shoeAir > 0 ? -35 : (shoeHop ? -12 : 0)), anchor: .bottomTrailing)
+                .rotationEffect(.degrees(frame.shoeAir > 0 ? -25 : (shoeHop ? -12 : 0)), anchor: .bottomTrailing)
                 .position(x: w * CGFloat(frame.shoeX),
                           y: floorY - 8.5 - h * 0.5 * CGFloat(frame.shoeAir) - (shoeHop ? 7 : 0))
 
@@ -658,7 +658,7 @@ struct BulkScene: View {
             }
 
             // ВРЕМЕННО: в конце строки — диагностика общей памяти с приложением
-            Text("Бульк · \(action.status)   [из прил.: \(BulkStore.appSeenVia.isEmpty ? "нет" : BulkStore.appSeenVia.joined(separator: "+")) · связка \(SharedKeychain.lastStatus)]")
+            Text("Бульк · \(action.status)")
                 .font(.system(size: 9, weight: .medium, design: .rounded))
                 .foregroundStyle(Color.white.opacity(0.4))
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -717,8 +717,10 @@ struct BulkScene: View {
             }
             .position(x: bx - bodyW * 0.6, y: topY + 4)
         case .burp:
-            Circle().fill(Color(red: 0.65, green: 0.82, blue: 0.55).opacity(0.35))
-                .frame(width: 16, height: 16).position(x: bx + bodyW * 0.55, y: topY + 10)
+            Text("буэ").font(.system(size: 10, weight: .semibold, design: .rounded)).italic()
+                .foregroundStyle(Color.white.opacity(0.65))
+                .rotationEffect(.degrees(-12))
+                .position(x: bx + bodyW * 0.62, y: topY + bodyW * 0.55)
         default:
             if drunkLook {
                 Text("ик").font(.system(size: 10, weight: .semibold, design: .rounded))

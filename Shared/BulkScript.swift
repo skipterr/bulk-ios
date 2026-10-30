@@ -156,10 +156,10 @@ enum BulkScript {
             let dir = shoe < 0.5 ? 1.0 : -1.0
             walk(to: min(0.92, max(0.08, shoe - dir * 0.09)))
             add(FramePose(tilt: -dir * 14, mouth: .flat))
+            // кроссовок отлетает низко над полом, кувыркаясь, и сразу приземляется — не зависает в воздухе
             let target = min(0.9, max(0.1, shoe + dir * Double.random(in: 0.3...0.5)))
-            shoe = (shoe + target) / 2
-            add(FramePose(tilt: dir * 14, eyes: .happy, mouth: .grin), shoeAir: 0.6)
             shoe = target
+            add(FramePose(tilt: dir * 14, eyes: .happy, mouth: .grin), shoeAir: 0.06)
             add(FramePose(eyes: .happy, mouth: .grin))
             add(FramePose(dy: -5, eyes: .happy, mouth: .grin, arms: .up))
         case .dance:
