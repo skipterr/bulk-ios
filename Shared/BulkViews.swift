@@ -601,7 +601,8 @@ struct BulkScene: View {
                               y: lift > 0.5 ? h * 0.42 : max(14, bottomY - bodyH * sy - 16))
             }
 
-            Text("Бульк · \(action.status)")
+            // ВРЕМЕННО: в конце строки — диагностика общей памяти с приложением
+            Text("Бульк · \(action.status)   [группа: \(SharedGroup.id ?? "нет"), связь: \(SharedGroup.isShared ? "да" : "нет")]")
                 .font(.system(size: 9, weight: .medium, design: .rounded))
                 .foregroundStyle(Color.white.opacity(0.4))
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
