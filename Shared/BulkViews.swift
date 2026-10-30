@@ -584,12 +584,8 @@ struct BulkScene: View {
         (sin(clock * 1.3) * 4 + sin(clock * 0.47) * 2) * (frame.lift > 0.8 ? 2.5 : 1)
     }
 
-    // кроссовок изредка сам подпрыгивает и дёргается — в случайные моменты, а не по расписанию
-    private var shoeHop: Bool {
-        guard frame.shoeAir == 0 else { return false }
-        let r = sin((clock / 1.5).rounded() * 12.9898) * 43758.5453
-        return r - r.rounded(.down) < 0.07
-    }
+    // кроссовок сам не дёргается (Марк попросил убрать) — двигается, только когда Бульк его пинает
+    private var shoeHop: Bool { false }
 
     private var action: BulkAction { frame.action }
     private var lightOn: Bool { frame.light }

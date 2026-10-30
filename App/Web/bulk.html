@@ -59,7 +59,7 @@ button:focus-visible{outline:2px solid var(--glow);outline-offset:2px}
   <div class="bar">
     <form class="chat" id="chatForm" autocomplete="off">
       <input id="chatInput" type="text" enterkeyhint="send" placeholder="Напиши Бульку…" aria-label="Сообщение Бульку">
-      <button type="submit" aria-label="Отправить">➤</button>
+      <button type="submit" id="chatSend" aria-label="Отправить">➤</button>
     </form>
     <div class="btns">
       <button id="bDrink" type="button">Налить</button>
@@ -763,6 +763,14 @@ chatInput.addEventListener('focus', () => {
   document.body.classList.add('typing');
   if (b.ground && free() && !b.asleep) { hop(R * 10); b.sv += 2; say(pick(['уиии!', 'опа!', 'ой!']), 1.2); }
 });
+// Отправка с первого тапа: не даём кнопке забрать фокус у поля, иначе клавиатура
+// прячется, панель сдвигается и тап «промахивается».
+const chatSend = document.getElementById('chatSend');
+chatSend.addEventListener('pointerdown', e => {
+  e.preventDefault();
+  chatForm.requestSubmit();
+});
+chatSend.addEventListener('click', e => e.preventDefault());
 chatInput.addEventListener('blur', () => {
   document.body.classList.remove('typing');
   window.scrollTo(0, 0);
@@ -909,7 +917,8 @@ function physics(dt) {
   shoe.x += shoe.vx * dt; shoe.rot += shoe.vr * dt;
   if (shoe.y >= FLOOR && shoe.vy === 0) {
     shoe.vx *= Math.exp(-5 * dt); shoe.vr *= Math.exp(-8 * dt);
-    const target = Math.round(shoe.rot / Math.PI) * Math.PI;
+    // всегда встаёт на подошву (полный оборот), а не лежит вверх ногами
+    const target = Math.round(shoe.rot / (Math.PI * 2)) * Math.PI * 2;
     shoe.rot = ease(shoe.rot, target, 8, dt);
   }
   if (shoe.x < half) { shoe.x = half; shoe.vx = Math.abs(shoe.vx) * 0.6; shoe.vr *= -0.6; }
