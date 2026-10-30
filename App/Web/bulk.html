@@ -132,7 +132,7 @@ const NAMES = {
   swear: 'ругается', burp: 'рыгает', drink: 'выпивает', unscrew: 'ворует лампочку',
   screwBack: 'вкручивает обратно', fix: 'включает свет', kick: 'пинает ботинок', dance: 'танцует',
   stare: 'пялится на тебя', held: 'у тебя в руках', flying: 'летит', poked: 'возмущается',
-  wake: 'проснулся злой', scared: 'боится темноты', read: 'читает письмо'
+  wake: 'проснулся злой', scared: 'боится темноты', read: 'читает письмо', meet: 'знакомится'
 };
 
 // ---------- мир ----------
@@ -224,7 +224,7 @@ function setAct(name) {
   if (act && act.end) act.end();
   act = ACT[name]();
   act.name = name; act.t = 0;
-  if (!['poked', 'held', 'flying', 'wake', 'scared', 'read'].includes(name)) lastName = name;
+  if (!['poked', 'held', 'flying', 'wake', 'scared', 'read', 'meet'].includes(name)) lastName = name;
   const n = NAMES[name] || name;
   statusEl.innerHTML = 'Бульк <b>' + n + '</b>' + (b.tipsy > 0.5 ? ' · навеселе' : '');
 }
@@ -443,6 +443,14 @@ const ACT = {
       return t > dur;
     } };
   },
+  meet() {
+    return { update() {
+      b.vx = 0; b.eyes = 'wide'; b.lookT = { x: 0, y: 0.25 };
+      b.mouth = onboard.step <= 0 ? 'o' : 'smile';
+      if (onboard.step === 0) b.poseT = { l: REST.l, r: [1.12, -0.95] };   // машет на первой фразе
+      return onboard.step < 0;
+    } };
+  },
   read() {
     let s = false;
     return { update() {
@@ -614,7 +622,8 @@ const chatInput = document.getElementById('chatInput');
 // Google часто меняет модели — пробуем по очереди; если модель закрыли,
 // Google в ошибке подсказывает новую, и Бульк сразу пробует её.
 // flash-lite отвечает меньше чем за секунду, «думающие» модели бывают по 30+ секунд.
-const MODELS = ['gemini-3.5-flash-lite', 'gemini-3.8-flash'];
+// Если модель молчит дольше 8 с (бесплатный тариф бывает перегружен), сразу пробуем следующую.
+const MODELS = ['gemini-3.1-flash-lite', 'gemini-3-flash-preview', 'gemini-3.5-flash-lite', 'gemini-3.5-flash'];
 let geminiKey = window.__geminiKey || '';
 const CHAT_ACTIONS = {
   drink: 'drink', sleep: 'sleep', dance: 'dance', burp: 'burp', swear: 'swear',
@@ -682,6 +691,11 @@ async function askGemini(text) {
     const r = await postJSON(url, body, geminiKey);
     let data = {};
     try { data = JSON.parse(r.text || '{}'); } catch (_) {}
+    // 0 — не дождались ответа, 429/500/503 — Google перегружен: пробуем следующую модель
+    if (r.status === 0 || r.status === 429 || r.status >= 500) {
+      lastErr = (data.error && data.error.message) || 'модель ' + model + ' не ответила';
+      continue;
+    }
     if (r.status === 404) {
       lastErr = 'нет модели ' + model;
       const hint = /use models\/([\w.-]+)/.exec((data.error && data.error.message) || '');
@@ -832,7 +846,8 @@ function nextOnboard() {
     if (!geminiKey) chatInput.focus();
     return;
   }
-  if (onboard.step % 2 === 0 && b.ground && free()) hop(R * 6);
+  // знакомится стоя на месте и удивлённо разглядывая нового друга
+  if (!act || act.name !== 'meet') setAct('meet');
   showOnboard();
 }
 

@@ -116,7 +116,7 @@ struct BulkWebView: UIViewRepresentable {
                 req.setValue(key, forHTTPHeaderField: "x-goog-api-key")
             }
             req.httpBody = Data(body.utf8)
-            req.timeoutInterval = 20
+            req.timeoutInterval = 8
             URLSession.shared.dataTask(with: req) { [weak self] data, response, error in
                 let status = (response as? HTTPURLResponse)?.statusCode ?? 0
                 let text = data.flatMap { String(data: $0, encoding: .utf8) } ?? (error?.localizedDescription ?? "нет ответа")
