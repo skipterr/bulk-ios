@@ -23,9 +23,9 @@ struct BulkProvider: TimelineProvider {
         completion(Timeline(entries: Self.makeEntries(now: .now), policy: .atEnd))
     }
 
-    // План на ближайшие полчаса: каждые 2 секунды следующий кадр сценария,
+    // План на ближайшие 25 минут: каждые 1,2 секунды следующий кадр сценария,
     // iOS плавно перетекает между ними. Занятия идут одно за другим без телепортов.
-    static let frameStep: TimeInterval = 2
+    static let frameStep: TimeInterval = 1.2
 
     static func makeEntries(now: Date) -> [BulkEntry] {
         var s = BulkStore.load()
@@ -40,7 +40,7 @@ struct BulkProvider: TimelineProvider {
         var shoe = s.shoeX
         var tipsy = s.tipsyNow(now)
         var t = now
-        let end = now.addingTimeInterval(30 * 60)
+        let end = now.addingTimeInterval(25 * 60)
         var entries: [BulkEntry] = []
         while t < end {
             let frames = BulkScript.frames(for: action, x: x, shoeX: shoe, light: light)
@@ -71,7 +71,7 @@ struct BulkWidgetView: View {
     // Без кнопок: на виджете Бульк просто живёт. Тап открывает приложение.
     var body: some View {
         BulkScene(frame: entry.frame, phrase: entry.phrase, tipsy: entry.tipsy)
-            .animation(.spring(duration: 1.0, bounce: 0.25), value: entry.date)
+            .animation(.spring(duration: 0.7, bounce: 0.25), value: entry.date)
     }
 }
 
