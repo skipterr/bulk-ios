@@ -42,19 +42,6 @@ struct BulkWebView: UIViewRepresentable {
         config.userContentController.addUserScript(WKUserScript(
             source: "window.__geminiKey = \(jsString(key));", injectionTime: .atDocumentStart, forMainFrameOnly: true))
 
-        // ВРЕМЕННО: строчка-диагностика общей памяти с виджетом
-        let group = SharedGroup.id ?? "нет"
-        let debug = "группа: \(group) · связь: \(SharedGroup.isShared ? "да" : "нет")"
-        let script = """
-        document.addEventListener('DOMContentLoaded', () => {
-          const d = document.createElement('div');
-          d.textContent = \(jsString(debug));
-          d.style.cssText = 'position:absolute;top:calc(40px + env(safe-area-inset-top,0px));left:16px;right:16px;font:11px -apple-system;color:#9a9aa3;pointer-events:none';
-          document.body.appendChild(d);
-        });
-        """
-        config.userContentController.addUserScript(WKUserScript(source: script, injectionTime: .atDocumentStart, forMainFrameOnly: true))
-
         let web = WKWebView(frame: .zero, configuration: config)
         web.isOpaque = false
         web.backgroundColor = UIColor(white: 0.11, alpha: 1)
@@ -111,7 +98,7 @@ struct BulkWebView: UIViewRepresentable {
                 req.setValue(key, forHTTPHeaderField: "x-goog-api-key")
             }
             req.httpBody = Data(body.utf8)
-            req.timeoutInterval = 30
+            req.timeoutInterval = 20
             URLSession.shared.dataTask(with: req) { [weak self] data, response, error in
                 let status = (response as? HTTPURLResponse)?.statusCode ?? 0
                 let text = data.flatMap { String(data: $0, encoding: .utf8) } ?? (error?.localizedDescription ?? "нет ответа")

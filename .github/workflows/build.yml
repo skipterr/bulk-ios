@@ -17,7 +17,7 @@ jobs:
         run: |
           xcrun --sdk macosx swiftc -parse-as-library -O -target "$(uname -m)-apple-macos14" \
             Shared/BulkModel.swift Shared/BulkViews.swift Shared/Flipbook.swift Shared/SharedGroup.swift \
-            Shared/BulkScript.swift Tools/RenderFrames.swift -o render
+            Shared/BulkScript.swift Shared/SharedBridge.swift Tools/RenderFrames.swift -o render
           ./render frames App/Assets.xcassets/AppIcon.appiconset/icon.png
 
       - uses: actions/upload-artifact@v4

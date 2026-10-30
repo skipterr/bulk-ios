@@ -602,7 +602,7 @@ struct BulkScene: View {
             }
 
             // ВРЕМЕННО: в конце строки — диагностика общей памяти с приложением
-            Text("Бульк · \(action.status)   [группа: \(SharedGroup.id ?? "нет"), связь: \(SharedGroup.isShared ? "да" : "нет")]")
+            Text("Бульк · \(action.status)   [мост: \(SharedBridge.hasData ? "есть" : "пусто")]")
                 .font(.system(size: 9, weight: .medium, design: .rounded))
                 .foregroundStyle(Color.white.opacity(0.4))
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)

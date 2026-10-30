@@ -23,9 +23,10 @@ struct BulkProvider: TimelineProvider {
         completion(Timeline(entries: Self.makeEntries(now: .now), policy: .atEnd))
     }
 
-    // План на ближайшие 25 минут: каждые 1,2 секунды следующий кадр сценария,
+    // План на ближайшие 12 минут: каждые 1,5 секунды следующий кадр сценария,
     // iOS плавно перетекает между ними. Занятия идут одно за другим без телепортов.
-    static let frameStep: TimeInterval = 1.2
+    // Больше ~600 кадров iOS не успевает построить — виджет становится серой заглушкой.
+    static let frameStep: TimeInterval = 1.5
 
     static func makeEntries(now: Date) -> [BulkEntry] {
         var s = BulkStore.load()
@@ -40,7 +41,7 @@ struct BulkProvider: TimelineProvider {
         var shoe = s.shoeX
         var tipsy = s.tipsyNow(now)
         var t = now
-        let end = now.addingTimeInterval(25 * 60)
+        let end = now.addingTimeInterval(12 * 60)
         var entries: [BulkEntry] = []
         while t < end {
             let frames = BulkScript.frames(for: action, x: x, shoeX: shoe, light: light)

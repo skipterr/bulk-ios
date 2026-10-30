@@ -114,15 +114,23 @@ struct BulkState: Codable {
 enum BulkStore {
     private static let key = "bulk.state.v1"
 
+    // Берём самое свежее состояние: из своей памяти или из общего буфера (там его оставляет приложение).
     static func load() -> BulkState {
-        guard let data = SharedGroup.defaults.data(forKey: key),
-              let state = try? JSONDecoder().decode(BulkState.self, from: data) else { return BulkState() }
-        return state
+        let decoder = JSONDecoder()
+        let own = SharedGroup.defaults.data(forKey: key).flatMap { try? decoder.decode(BulkState.self, from: $0) }
+        let shared = SharedBridge.read().flatMap { try? decoder.decode(BulkState.self, from: $0) }
+        switch (own, shared) {
+        case let (a?, b?): return b.since > a.since ? b : a
+        case let (a?, nil): return a
+        case let (nil, b?): return b
+        default: return BulkState()
+        }
     }
 
     static func save(_ state: BulkState) {
         if let data = try? JSONEncoder().encode(state) {
             SharedGroup.defaults.set(data, forKey: key)
+            SharedBridge.write(data)
         }
     }
 }
