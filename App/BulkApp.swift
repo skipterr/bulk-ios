@@ -45,8 +45,11 @@ struct BulkWebView: UIViewRepresentable {
         // Сохранённый ключ Gemini отдаём странице до её запуска.
         let key = UserDefaults.standard.string(forKey: Self.keyDefaultsKey) ?? KeyVault.load() ?? ""
         if !key.isEmpty { KeyVault.save(key) }
+        // и память Булька о тебе (переписка + факты), если она есть
+        let memory = KeyVault.load(account: "memory") ?? ""
         config.userContentController.addUserScript(WKUserScript(
-            source: "window.__geminiKey = \(jsString(key));", injectionTime: .atDocumentStart, forMainFrameOnly: true))
+            source: "window.__geminiKey = \(jsString(key)); window.__bulkMemory = \(jsString(memory));",
+            injectionTime: .atDocumentStart, forMainFrameOnly: true))
 
         let web = WKWebView(frame: .zero, configuration: config)
         web.isOpaque = false
@@ -78,6 +81,8 @@ struct BulkWebView: UIViewRepresentable {
                     }
                 case "fetch":
                     fetch(dict)
+                case "saveMemory":
+                    if let json = dict["json"] as? String { KeyVault.save(json, account: "memory") }
                 case "remind":
                     if let text = dict["text"] as? String, let at = dict["at"] as? String {
                         Reminders.add(text: text, at: at)

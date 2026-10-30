@@ -590,7 +590,20 @@ document.getElementById('bSleep').onclick = sendToSleep;
 setTimeout(() => document.querySelector('.hint').classList.add('gone'), 4000);
 
 // ---------- чат с Бульком (мозг — Gemini) ----------
-const chat = { waiting: false, history: [] };
+const chat = { waiting: false, history: [], facts: [] };
+// Память Булька: последние сообщения и факты о хозяине (хранятся в связке ключей iPhone).
+try {
+  const mem = JSON.parse(window.__bulkMemory || '{}');
+  if (Array.isArray(mem.history)) chat.history = mem.history.slice(-20);
+  if (Array.isArray(mem.facts)) chat.facts = mem.facts.slice(-40);
+} catch (_) {}
+function saveMemory() {
+  try {
+    window.webkit.messageHandlers.bulk.postMessage({
+      type: 'saveMemory', json: JSON.stringify({ history: chat.history.slice(-20), facts: chat.facts.slice(-40) })
+    });
+  } catch (_) {}
+}
 const chatForm = document.getElementById('chatForm');
 const chatInput = document.getElementById('chatInput');
 // Google часто меняет модели — пробуем по очереди; если модель закрыли,
@@ -607,6 +620,7 @@ const BULK_PERSONA = `Ты Бульк — маленький серый круг
 Отвечай по-русски, на «ты», коротко: 1–2 фразы, не больше 140 символов, как в облачке комикса.
 Отвечай строго JSON: {"reply": "текст ответа", "action": "одно из: none, drink, sleep, dance, burp, swear, wave, jump, kick, unscrew, light_off, light_on, stare"}.
 action выбирай по смыслу: зовут выпить — drink, говорят спать — sleep, праздник или музыка — dance, злишься — swear, приветствие — wave, выключить свет — light_off, включить — light_on. Если ничего не подходит — none.
+Если хозяин рассказал о себе что-то, что стоит запомнить надолго (имя, близкие, работа, увлечения, планы, что любит и не любит), добавь в JSON поле "remember": "короткий факт от третьего лица, например: Хозяина зовут Марк". Потом сам вспоминай эти факты к месту.
 Если хозяин просит напомнить о чём-то, добавь в JSON поле "reminder": {"text": "короткий текст напоминания в твоём стиле", "at": "ГГГГ-ММ-ДДTЧЧ:ММ"} — местное время, считай от текущего момента. Если время не сказали — спроси в reply и reminder не добавляй. В остальных случаях "reminder" не нужен.`;
 
 function nowForPrompt() {
@@ -647,7 +661,8 @@ async function askGemini(text) {
   chat.history.push({ role: 'user', parts: [{ text }] });
   chat.history = chat.history.slice(-12);
   const body = {
-    systemInstruction: { parts: [{ text: BULK_PERSONA + '\nСейчас: ' + nowForPrompt() + '.' }] },
+    systemInstruction: { parts: [{ text: BULK_PERSONA + '\nСейчас: ' + nowForPrompt() + '.' +
+      (chat.facts.length ? '\nЧто ты знаешь о хозяине:\n- ' + chat.facts.join('\n- ') : '') }] },
     contents: chat.history,
     generationConfig: { responseMimeType: 'application/json', temperature: 1, maxOutputTokens: 1024 }
   };
@@ -688,6 +703,11 @@ function sendLetter() {
 function performChat(out) {
   const reply = String(out.reply || '...').slice(0, 220);
   const a = String(out.action || 'none');
+  if (out.remember) {
+    const fact = String(out.remember).slice(0, 160);
+    if (!chat.facts.includes(fact)) chat.facts.push(fact);
+  }
+  saveMemory();
   const rem = out.reminder;
   if (rem && rem.text && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(String(rem.at || ''))) {
     try {
@@ -769,7 +789,29 @@ function startGrab() {
   ptr.off = { x: b.x - ptr.x, y: b.y - ptr.y };
   setAct('held');
 }
+// ---------- приветствие при первом запуске (пока нет ключа Gemini) ----------
+const ONBOARD = [
+  'Йоу! Меня зовут Бульк 👋',
+  'Я твой новый помощник и друг. Живу тут, в комнате, и у тебя на экране «Домой».',
+  'Меня можно тыкать, хватать и кидать. Кнопки внизу: налить, свет, ботинок, уложить спать.',
+  'Пиши мне в чат — отвечу. Скажешь «пьём» — налью, «спать» — лягу, «музон» — станцую.',
+  'Могу напоминать: «напомни завтра в 9 про тренировку». Пришлю уведомление.',
+  'Добавь мой виджет: зажми пустое место на экране «Домой» → «+» → Бульк.',
+  'Чтобы я мог болтать, нужен ключ Gemini: aistudio.google.com → Get API key. Вставь его в поле внизу 👇'
+];
+const onboard = { step: -1 };
+function showOnboard() {
+  say(ONBOARD[onboard.step] + (onboard.step < ONBOARD.length - 1 ? '  ›' : ''), 600, true);
+}
+function nextOnboard() {
+  onboard.step++;
+  if (onboard.step >= ONBOARD.length) { onboard.step = -1; bubble = null; chatInput.focus(); return; }
+  if (onboard.step % 2 === 0 && b.ground && free()) hop(R * 6);
+  showOnboard();
+}
+
 cv.addEventListener('pointerdown', e => {
+  if (onboard.step >= 0) { e.preventDefault(); nextOnboard(); return; }
   const p = evPos(e);
   try { cv.setPointerCapture(e.pointerId); } catch (_) {}
   Object.assign(ptr, { down: true, x: p.x, y: p.y, sx: p.x, sy: p.y, t0: performance.now(), hist: [{ x: p.x, y: p.y, t: performance.now() }] });
@@ -1338,6 +1380,8 @@ function start() {
   handFont = getComputedStyle(document.documentElement).getPropertyValue('--font-hand').trim() || 'cursive';
   resize();
   setAct('wave');
+  // новый хозяин (ключа ещё нет) — Бульк знакомится
+  if (!geminiKey) setTimeout(() => { if (onboard.step < 0) { onboard.step = -1; nextOnboard(); } }, 1200);
   requestAnimationFrame(t => { last = t; frame(t); });
 }
 if (document.fonts && document.fonts.load) {
