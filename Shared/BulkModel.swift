@@ -36,7 +36,7 @@ enum BulkAction: String, Codable, CaseIterable {
         case .wave: return ["привет!", "о, ты тут", "йоу", "я Бульк!"]
         case .sleep: return ["zzz", "хррр...", "zzZZ"]
         case .burp: return ["БУЭЭЭЭ", "пардон", "ыыыгх"]
-        case .swear: return ["да #@%&!", "ё-моё...", "твою ж *****!", "бл@*!", "%$#@!!"]
+        case .swear: return ["да бля!", "ёб твою мать...", "пиздец!", "сука!", "ну нахер!"]
         case .drink: return ["за здоровье!", "буль-буль", "по чуть-чуть"]
         case .unscrew: return ["хе-хе", "скрип-скрип"]
         case .inDark: return ["свет для слабаков", "сюрприз!", "моя лампочка"]
@@ -46,7 +46,7 @@ enum BulkAction: String, Codable, CaseIterable {
         case .dance: return ["♪ ♫", "туц-туц", "♫"]
         case .stare: return ["чё смотришь?", "а ты кто?", "мне б зарплату"]
         case .poked: return ["эй!", "щекотно!", "хи-хи", "ну чё?"]
-        case .mad: return ["ДА ОТСТАНЬ!", "ну всё, #@%&!", "щас укушу!"]
+        case .mad: return ["ДА ОТСТАНЬ!", "ну всё, бля!", "щас укушу!"]
         case .scared: return ["эй! кто выключил?", "мне страшно...", "мама..."]
         }
     }

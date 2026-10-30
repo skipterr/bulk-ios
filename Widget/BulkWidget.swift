@@ -30,7 +30,9 @@ struct BulkProvider: TimelineProvider {
 
     static func makeEntries(now: Date) -> [BulkEntry] {
         var s = BulkStore.load()
-        let fresh = now.timeIntervalSince(s.since) < 60
+        // Что ты сделал в приложении, Бульк на виджете продолжает ещё ~3 минуты.
+        let userHold: TimeInterval = 180
+        let fresh = now.timeIntervalSince(s.since) < userHold
         if !fresh {
             s.set(BulkBrain.next(after: s.action, lightOn: s.lightOn), at: now)
         }
@@ -43,17 +45,23 @@ struct BulkProvider: TimelineProvider {
         var t = now
         let end = now.addingTimeInterval(12 * 60)
         var entries: [BulkEntry] = []
+        var first = true
         while t < end {
-            let frames = BulkScript.frames(for: action, x: x, shoeX: shoe, light: light)
-            for (i, f) in frames.enumerated() {
-                entries.append(BulkEntry(date: t, frame: f, phrase: i < 2 ? phrase : "", tipsy: tipsy))
-                t = t.addingTimeInterval(frameStep)
-            }
-            if let last = frames.last {
-                x = last.x
-                shoe = last.shoeX
-                light = last.light
-            }
+            // твоё действие повторяется, пока не истекут ~3 минуты
+            let repeatUntil = first && fresh ? s.since.addingTimeInterval(userHold) : t
+            repeat {
+                let frames = BulkScript.frames(for: action, x: x, shoeX: shoe, light: light)
+                for (i, f) in frames.enumerated() {
+                    entries.append(BulkEntry(date: t, frame: f, phrase: i < 2 ? phrase : "", tipsy: tipsy))
+                    t = t.addingTimeInterval(frameStep)
+                }
+                if let last = frames.last {
+                    x = last.x
+                    shoe = last.shoeX
+                    light = last.light
+                }
+            } while t < repeatUntil && t < end
+            first = false
             action = BulkBrain.next(after: action, lightOn: light)
             phrase = action.phrases.randomElement() ?? ""
             tipsy = action == .drink ? min(1.6, tipsy + 0.6) : max(0, tipsy - 0.05)

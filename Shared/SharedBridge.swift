@@ -18,9 +18,18 @@ enum SharedBridge {
     static func read() -> Data? {
         board?.data(forPasteboardType: type)
     }
+
+    // Запасная копия ключа Gemini: переживает переустановку через Sideloadly.
+    private static let keyBoard = UIPasteboard(name: UIPasteboard.Name("com.bulk.shared.key"), create: true)
+
+    static var savedKey: String? {
+        get { keyBoard?.string }
+        set { keyBoard?.string = newValue }
+    }
     #else
     static func write(_ data: Data) {}
     static func read() -> Data? { nil }
+    static var savedKey: String? { get { nil } set {} }
     #endif
 
     /// Для диагностики: видно ли из этого процесса хоть что-то в общем буфере.

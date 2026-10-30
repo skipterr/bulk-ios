@@ -25,6 +25,7 @@ body{background:var(--bg);color:var(--ink);font-family:var(--font-ui);overflow:h
 .app{position:relative;height:100%}
 .stage{position:absolute;inset:0}
 canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:grab}
+body.typing .btns, body.typing .hint, body.typing .status{display:none}
 .status{position:absolute;top:calc(12px + env(safe-area-inset-top, 0px));left:max(16px, env(safe-area-inset-left, 0px));
   font-family:var(--font-hand);font-size:20px;color:var(--muted);pointer-events:none;letter-spacing:.01em}
 .status b{color:var(--ink);font-weight:400}
@@ -79,6 +80,7 @@ const statusEl = document.getElementById('status');
 
 let W = 0, H = 0, DPR = 1, FLOOR = 0, R = 40, G = 1200, T = 0;
 let inited = false;
+let lastBarH = 0;
 
 // ---------- утилиты ----------
 const rand = (a, b) => a + Math.random() * (b - a);
@@ -99,8 +101,8 @@ const P = {
   hi: ['привет!', 'о, ты тут', 'йоу', 'хай-хай', 'я Бульк!'],
   poke: ['эй!', 'щекотно!', 'хи-хи', 'ай', 'ну чё?', 'бульк!'],
   pokeAnnoyed: ['не тыкай', 'ну хватит', 'я ж не кнопка', 'ещё раз и всё'],
-  pokeMad: ['ДА ОТСТАНЬ ТЫ!', 'ну всё, #@%&!', 'щас укушу!'],
-  swear: ['да #@%&!', 'ё-моё...', 'твою ж *****!', 'бл@*!', '%$#@!!', 'вот же ж ****'],
+  pokeMad: ['ДА ОТСТАНЬ ТЫ!', 'ну всё, бля!', 'щас укушу!'],
+  swear: ['да бля!', 'ёб твою мать...', 'пиздец!', 'сука!', 'ну нахер!', 'вот же ж блядь'],
   burp: ['БУЭЭЭЭ', 'БУЭ!', 'ыыыгх'],
   burpAfter: ['пардон', 'упс', 'хорошо пошло'],
   cheers: ['за здоровье!', 'ну, вздрогнули', 'по чуть-чуть'],
@@ -166,7 +168,11 @@ function resize() {
   cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
   R = clamp(Math.min(W, H * 0.9) * 0.085, 26, 60);
   G = R * 32;
-  FLOOR = H * 0.8;
+  // пол над панелью с кнопками, чтобы Бульк и кроссовок не прятались за ней
+  const barEl = document.querySelector('.bar');
+  const barH = barEl && !document.body.classList.contains('typing') ? barEl.offsetHeight : 0;
+  if (barH) lastBarH = barH;
+  FLOOR = Math.min(H * 0.8, H - (lastBarH || 0) - R * 0.5);
   lamp.x = W * 0.64;
   lamp.len = clamp(FLOOR - R * 6.4, H * 0.16, H * 0.38);
   if (!inited) {
@@ -596,7 +602,7 @@ const CHAT_ACTIONS = {
   wave: 'wave', jump: 'jumpy', kick: 'kick', unscrew: 'unscrew', stare: 'stare'
 };
 const BULK_PERSONA = `Ты Бульк — маленький серый круглый живой персонаж с большими глазами. Живёшь в тёмной комнате с лампочкой на проводе внутри телефона своего хозяина. Ты дерзкий, смешной, бунтарь, но добрый в душе и любишь хозяина. Любишь выпить, поспать, потанцевать, пнуть свой красный кроссовок и выкрутить лампочку.
-Можешь ругаться, но мат всегда пиши со звёздочками или символами (#@%&).
+Материшься свободно и открытым текстом, без звёздочек и замен, как живой пацан. Но не оскорбляешь людей по национальности, вере и т.п.
 Отвечай по-русски, на «ты», коротко: 1–2 фразы, не больше 140 символов, как в облачке комикса.
 Отвечай строго JSON: {"reply": "текст ответа", "action": "одно из: none, drink, sleep, dance, burp, swear, wave, jump, kick, unscrew, light_off, light_on, stare"}.
 action выбирай по смыслу: зовут выпить — drink, говорят спать — sleep, праздник или музыка — dance, злишься — swear, приветствие — wave, выключить свет — light_off, включить — light_on. Если ничего не подходит — none.`;
@@ -722,6 +728,8 @@ if (window.visualViewport) {
   const vv = window.visualViewport;
   const lift = () => {
     const kb = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+    // пока печатаешь — остаётся только поле ввода над клавиатурой
+    document.body.classList.toggle('typing', kb > 40);
     barEl.style.transform = kb > 40 ? `translateY(${-kb}px)` : '';
   };
   vv.addEventListener('resize', lift);
