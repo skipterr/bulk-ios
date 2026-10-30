@@ -605,7 +605,15 @@ const BULK_PERSONA = `Ты Бульк — маленький серый круг
 Материшься свободно и открытым текстом, без звёздочек и замен, как живой пацан. Но не оскорбляешь людей по национальности, вере и т.п.
 Отвечай по-русски, на «ты», коротко: 1–2 фразы, не больше 140 символов, как в облачке комикса.
 Отвечай строго JSON: {"reply": "текст ответа", "action": "одно из: none, drink, sleep, dance, burp, swear, wave, jump, kick, unscrew, light_off, light_on, stare"}.
-action выбирай по смыслу: зовут выпить — drink, говорят спать — sleep, праздник или музыка — dance, злишься — swear, приветствие — wave, выключить свет — light_off, включить — light_on. Если ничего не подходит — none.`;
+action выбирай по смыслу: зовут выпить — drink, говорят спать — sleep, праздник или музыка — dance, злишься — swear, приветствие — wave, выключить свет — light_off, включить — light_on. Если ничего не подходит — none.
+Если хозяин просит напомнить о чём-то, добавь в JSON поле "reminder": {"text": "короткий текст напоминания в твоём стиле", "at": "ГГГГ-ММ-ДДTЧЧ:ММ"} — местное время, считай от текущего момента. Если время не сказали — спроси в reply и reminder не добавляй. В остальных случаях "reminder" не нужен.`;
+
+function nowForPrompt() {
+  const d = new Date();
+  const days = ['воскресенье', 'понедельник', 'вторник', 'среда', 'четверг', 'пятница', 'суббота'];
+  const p = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}, ${days[d.getDay()]}`;
+}
 
 // Запросы идут через приложение (так надёжнее), в браузере — напрямую.
 const pendingFetch = {};
@@ -638,7 +646,7 @@ async function askGemini(text) {
   chat.history.push({ role: 'user', parts: [{ text }] });
   chat.history = chat.history.slice(-12);
   const body = {
-    systemInstruction: { parts: [{ text: BULK_PERSONA }] },
+    systemInstruction: { parts: [{ text: BULK_PERSONA + '\nСейчас: ' + nowForPrompt() + '.' }] },
     contents: chat.history,
     generationConfig: { responseMimeType: 'application/json', temperature: 1, maxOutputTokens: 1024 }
   };
@@ -679,6 +687,12 @@ function sendLetter() {
 function performChat(out) {
   const reply = String(out.reply || '...').slice(0, 220);
   const a = String(out.action || 'none');
+  const rem = out.reminder;
+  if (rem && rem.text && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(String(rem.at || ''))) {
+    try {
+      window.webkit.messageHandlers.bulk.postMessage({ type: 'remind', text: String(rem.text).slice(0, 120), at: String(rem.at).slice(0, 16) });
+    } catch (_) {}
+  }
   if (act && act.name === 'read') setAct('idle');
   if (a === 'light_off' && lamp.on && lamp.hasBulb) toggleLamp();
   else if (a === 'light_on' && !lamp.on && lamp.hasBulb) toggleLamp();
@@ -729,8 +743,13 @@ if (window.visualViewport) {
   const lift = () => {
     const kb = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
     // пока печатаешь — остаётся только поле ввода над клавиатурой
-    document.body.classList.toggle('typing', kb > 40);
-    barEl.style.transform = kb > 40 ? `translateY(${-kb}px)` : '';
+    const typing = kb > 40;
+    // клавиатура выехала — Булька подкидывает от неожиданности
+    if (typing && !document.body.classList.contains('typing') && b.ground && free() && !b.asleep) {
+      hop(R * 10); b.sv += 2; say(pick(['уиии!', 'опа!', 'ой!']), 1.2);
+    }
+    document.body.classList.toggle('typing', typing);
+    barEl.style.transform = typing ? `translateY(${-kb}px)` : '';
   };
   vv.addEventListener('resize', lift);
   vv.addEventListener('scroll', lift);
@@ -834,6 +853,14 @@ function physics(dt) {
 
   // ботинок
   shoe.kickT -= dt; shoe.hitCD -= dt;
+  // кроссовок живой: изредка сам подпрыгивает и дёргается
+  shoe.nextTwitch = (shoe.nextTwitch ?? rand(4, 9)) - dt;
+  if (shoe.nextTwitch <= 0) {
+    shoe.nextTwitch = rand(5, 12);
+    if (shoe.y >= FLOOR - 0.5 && shoe.vy === 0 && Math.abs(shoe.vx) < R * 0.3) {
+      shoe.vy = -R * rand(3, 6); shoe.vr = rand(-1, 1) * 6; shoe.vx = rand(-1, 1) * R * 0.8;
+    }
+  }
   const half = R * 0.5;
   if (shoe.y < FLOOR || shoe.vy < 0) {
     shoe.vy += G * dt; shoe.y += shoe.vy * dt;
@@ -868,7 +895,8 @@ function physics(dt) {
   }
 
   // лампа качается
-  lamp.swingV += (-lamp.swing * 3.2 - lamp.swingV * 0.7) * dt;
+  // лампа живая: всё время чуть качается на проводе (лёгкий «сквозняк»)
+  lamp.swingV += (-lamp.swing * 3.2 - lamp.swingV * 0.7) * dt + (Math.sin(T * 1.7) * 0.12 + Math.sin(T * 0.6) * 0.06) * dt;
   lamp.swing = clamp(lamp.swing + lamp.swingV * dt, -0.5, 0.5);
   const tgt = lamp.on && lamp.hasBulb ? 1 : 0;
   lamp.level = ease(lamp.level, tgt, tgt > lamp.level ? 5 : 10, dt);

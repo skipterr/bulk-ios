@@ -1,9 +1,14 @@
 import SwiftUI
 import WebKit
 import WidgetKit
+import UserNotifications
 
 @main
 struct BulkApp: App {
+    init() {
+        UNUserNotificationCenter.current().delegate = NotificationDelegate.shared
+    }
+
     var body: some Scene {
         WindowGroup {
             ContentView()
@@ -71,6 +76,10 @@ struct BulkWebView: UIViewRepresentable {
                     }
                 case "fetch":
                     fetch(dict)
+                case "remind":
+                    if let text = dict["text"] as? String, let at = dict["at"] as? String {
+                        Reminders.add(text: text, at: at)
+                    }
                 default:
                     break
                 }

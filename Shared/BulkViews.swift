@@ -542,6 +542,16 @@ struct BulkScene: View {
     let frame: BulkFrame
     let phrase: String
     let tipsy: Double
+    /// Время кадра в секундах — от него качается лампа и подрагивает кроссовок.
+    var clock: Double = 0
+
+    // лампа качается всегда, сильнее — когда Бульк на ней висит
+    private var lampSway: Double {
+        (sin(clock * 1.3) * 4 + sin(clock * 0.47) * 2) * (frame.lift > 0.8 ? 2.5 : 1)
+    }
+
+    // кроссовок изредка сам подпрыгивает и дёргается
+    private var shoeHop: Bool { frame.shoeAir == 0 && Int(clock / 1.5) % 9 == 0 }
 
     private var action: BulkAction { frame.action }
     private var lightOn: Bool { frame.light }
@@ -575,8 +585,9 @@ struct BulkScene: View {
 
             ShoeView(dark: dark)
                 .frame(width: 26, height: 17)
-                .rotationEffect(.degrees(frame.shoeAir > 0 ? -35 : 0))
-                .position(x: w * CGFloat(frame.shoeX), y: floorY - 8.5 - h * 0.5 * CGFloat(frame.shoeAir))
+                .rotationEffect(.degrees(frame.shoeAir > 0 ? -35 : (shoeHop ? -12 : 0)), anchor: .bottomTrailing)
+                .position(x: w * CGFloat(frame.shoeX),
+                          y: floorY - 8.5 - h * 0.5 * CGFloat(frame.shoeAir) - (shoeHop ? 7 : 0))
 
             Ellipse().fill(Color.black.opacity(0.45 - 0.3 * Double(lift)))
                 .frame(width: bodyW * (1 - 0.4 * lift), height: 5)
@@ -622,13 +633,11 @@ struct BulkScene: View {
                 .position(x: lampX, y: floorY + 2)
         }
         Rectangle().fill(Color.white.opacity(0.07)).frame(width: w, height: 1).position(x: w / 2, y: floorY)
-        // лампа слегка качается на проводе
-        Flipbook(count: 8, period: 3) { i in
-            lamp(bulbY: bulbY)
-                .rotationEffect(.degrees(sin(Double(i) / 8 * 2 * Double.pi) * 3), anchor: .top)
-        }
-        .frame(width: 60, height: bulbY + 30)
-        .position(x: lampX, y: (bulbY + 30) / 2)
+        // лампа качается на проводе (угол меняется от кадра к кадру, iOS плавно перетекает)
+        lamp(bulbY: bulbY)
+            .rotationEffect(.degrees(lampSway), anchor: .top)
+            .frame(width: 60, height: bulbY + 30)
+            .position(x: lampX, y: (bulbY + 30) / 2)
     }
 
     private func lamp(bulbY: CGFloat) -> some View {

@@ -52,7 +52,9 @@ struct BulkProvider: TimelineProvider {
             repeat {
                 let frames = BulkScript.frames(for: action, x: x, shoeX: shoe, light: light)
                 for (i, f) in frames.enumerated() {
-                    entries.append(BulkEntry(date: t, frame: f, phrase: i < 2 ? phrase : "", tipsy: tipsy))
+                    // пришло время напоминания — Бульк держит табличку 🔔
+                    let shown = s.reminder(at: t).map { "🔔 " + $0.text } ?? (i < 2 ? phrase : "")
+                    entries.append(BulkEntry(date: t, frame: f, phrase: shown, tipsy: tipsy))
                     t = t.addingTimeInterval(frameStep)
                 }
                 if let last = frames.last {
@@ -79,7 +81,7 @@ struct BulkWidgetView: View {
 
     // Без кнопок: на виджете Бульк просто живёт. Тап открывает приложение.
     var body: some View {
-        BulkScene(frame: entry.frame, phrase: entry.phrase, tipsy: entry.tipsy)
+        BulkScene(frame: entry.frame, phrase: entry.phrase, tipsy: entry.tipsy, clock: entry.date.timeIntervalSince1970)
             .animation(.spring(duration: 0.7, bounce: 0.25), value: entry.date)
     }
 }

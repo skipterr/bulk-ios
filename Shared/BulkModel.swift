@@ -82,6 +82,11 @@ enum BulkAction: String, Codable, CaseIterable {
     }
 }
 
+struct Reminder: Codable, Equatable {
+    var text: String
+    var at: Date
+}
+
 struct BulkState: Codable {
     var action: BulkAction = .wave
     var phrase: String = "я Бульк!"
@@ -93,6 +98,12 @@ struct BulkState: Codable {
     var lastPoke: Date = .distantPast
     var x: Double = 0.42
     var shoeX: Double = 0.12
+    var reminders: [Reminder] = []
+
+    /// Напоминание, которое Бульк показывает на виджете с момента «at» ещё полчаса.
+    func reminder(at date: Date) -> Reminder? {
+        reminders.first { date >= $0.at && date < $0.at.addingTimeInterval(30 * 60) }
+    }
 
     // Хмель выветривается примерно за полчаса.
     func tipsyNow(_ date: Date = .now) -> Double {
