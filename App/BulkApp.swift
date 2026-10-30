@@ -107,6 +107,9 @@ struct BulkWebView: UIViewRepresentable {
             var req = URLRequest(url: url)
             req.httpMethod = "POST"
             req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            if let key = dict["key"] as? String, !key.isEmpty {
+                req.setValue(key, forHTTPHeaderField: "x-goog-api-key")
+            }
             req.httpBody = Data(body.utf8)
             req.timeoutInterval = 30
             URLSession.shared.dataTask(with: req) { [weak self] data, response, error in
