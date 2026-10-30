@@ -30,9 +30,9 @@ struct BulkProvider: TimelineProvider {
 
     static func makeEntries(now: Date) -> [BulkEntry] {
         var s = BulkStore.load()
-        // Что ты сделал в приложении, Бульк на виджете продолжает ещё ~3 минуты.
-        let userHold: TimeInterval = 180
-        let fresh = now.timeIntervalSince(s.since) < userHold
+        // Что ты сделал в приложении, Бульк на виджете повторяет ещё раз-другой (до ~40 с).
+        let userHold: TimeInterval = 40
+        let fresh = s.byUser && now.timeIntervalSince(s.since) < userHold
         if !fresh {
             s.set(BulkBrain.next(after: s.action, lightOn: s.lightOn), at: now)
         }
@@ -47,9 +47,11 @@ struct BulkProvider: TimelineProvider {
         var entries: [BulkEntry] = []
         var first = true
         while t < end {
-            // твоё действие повторяется, пока не истекут ~3 минуты
+            // твоё действие повторяется максимум дважды
             let repeatUntil = first && fresh ? s.since.addingTimeInterval(userHold) : t
+            var plays = 0
             repeat {
+                plays += 1
                 let frames = BulkScript.frames(for: action, x: x, shoeX: shoe, light: light)
                 for (i, f) in frames.enumerated() {
                     // пришло время напоминания — Бульк держит табличку 🔔
@@ -62,7 +64,7 @@ struct BulkProvider: TimelineProvider {
                     shoe = last.shoeX
                     light = last.light
                 }
-            } while t < repeatUntil && t < end
+            } while plays < 2 && t < repeatUntil && t < end
             first = false
             action = BulkBrain.next(after: action, lightOn: light)
             phrase = action.phrases.randomElement() ?? ""

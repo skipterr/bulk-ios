@@ -736,24 +736,16 @@ chatForm.addEventListener('submit', async (e) => {
   }
 });
 
-// Клавиатура iPhone: поднимаем панель над ней.
-if (window.visualViewport) {
-  const barEl = document.querySelector('.bar');
-  const vv = window.visualViewport;
-  const lift = () => {
-    const kb = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
-    // пока печатаешь — остаётся только поле ввода над клавиатурой
-    const typing = kb > 40;
-    // клавиатура выехала — Булька подкидывает от неожиданности
-    if (typing && !document.body.classList.contains('typing') && b.ground && free() && !b.asleep) {
-      hop(R * 10); b.sv += 2; say(pick(['уиии!', 'опа!', 'ой!']), 1.2);
-    }
-    document.body.classList.toggle('typing', typing);
-    barEl.style.transform = typing ? `translateY(${-kb}px)` : '';
-  };
-  vv.addEventListener('resize', lift);
-  vv.addEventListener('scroll', lift);
-}
+// Клавиатура: на iPhone страница не узнаёт о ней напрямую, поэтому смотрим на поле ввода.
+// Пока печатаешь — видно только поле, кнопки и надписи прячутся; Булька подкидывает от неожиданности.
+chatInput.addEventListener('focus', () => {
+  document.body.classList.add('typing');
+  if (b.ground && free() && !b.asleep) { hop(R * 10); b.sv += 2; say(pick(['уиии!', 'опа!', 'ой!']), 1.2); }
+});
+chatInput.addEventListener('blur', () => {
+  document.body.classList.remove('typing');
+  window.scrollTo(0, 0);
+});
 
 const ptr = { down: false, x: 0, y: 0, sx: 0, sy: 0, t0: 0, target: null, off: null, hist: [] };
 function evPos(e) { const r = cv.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; }

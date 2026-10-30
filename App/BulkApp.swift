@@ -43,8 +43,8 @@ struct BulkWebView: UIViewRepresentable {
         config.userContentController.add(context.coordinator, name: "bulk")
 
         // Сохранённый ключ Gemini отдаём странице до её запуска.
-        let key = UserDefaults.standard.string(forKey: Self.keyDefaultsKey) ?? SharedBridge.savedKey ?? ""
-        if !key.isEmpty { SharedBridge.savedKey = key }
+        let key = UserDefaults.standard.string(forKey: Self.keyDefaultsKey) ?? KeyVault.load() ?? ""
+        if !key.isEmpty { KeyVault.save(key) }
         config.userContentController.addUserScript(WKUserScript(
             source: "window.__geminiKey = \(jsString(key));", injectionTime: .atDocumentStart, forMainFrameOnly: true))
 
@@ -72,7 +72,7 @@ struct BulkWebView: UIViewRepresentable {
                 case "saveKey":
                     if let key = dict["key"] as? String {
                         UserDefaults.standard.set(key, forKey: BulkWebView.keyDefaultsKey)
-                        SharedBridge.savedKey = key
+                        KeyVault.save(key)
                     }
                 case "fetch":
                     fetch(dict)
@@ -88,7 +88,7 @@ struct BulkWebView: UIViewRepresentable {
             // Что ты сделал с Бульком в приложении — сразу уходит в виджет.
             guard let name = message.body as? String, let action = BulkAction(rawValue: name) else { return }
             var s = BulkStore.load()
-            s.set(action, at: Date())
+            s.set(action, at: Date(), byUser: true)
             if action == .chill {
                 s.lightOn = true
                 s.phrase = "о, свет!"

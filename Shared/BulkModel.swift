@@ -90,7 +90,8 @@ struct Reminder: Codable, Equatable {
 struct BulkState: Codable {
     var action: BulkAction = .wave
     var phrase: String = "я Бульк!"
-    var since: Date = .now
+    // .distantPast — чтобы после установки Бульк сразу жил сам, а не «здоровался» по твоей команде
+    var since: Date = .distantPast
     var lightOn: Bool = true
     var tipsy: Double = 0
     var tipsyAt: Date = .now
@@ -110,7 +111,11 @@ struct BulkState: Codable {
         max(0, tipsy - date.timeIntervalSince(tipsyAt) / 1800)
     }
 
-    mutating func set(_ a: BulkAction, at date: Date) {
+    /// true — действие пришло от тебя из приложения (виджет его ненадолго повторяет)
+    var byUser = false
+
+    mutating func set(_ a: BulkAction, at date: Date, byUser: Bool = false) {
+        self.byUser = byUser
         action = a
         phrase = a.phrases.randomElement() ?? ""
         since = date
@@ -131,7 +136,13 @@ enum BulkStore {
         let own = SharedGroup.defaults.data(forKey: key).flatMap { try? decoder.decode(BulkState.self, from: $0) }
         let shared = SharedBridge.read().flatMap { try? decoder.decode(BulkState.self, from: $0) }
         switch (own, shared) {
-        case let (a?, b?): return b.since > a.since ? b : a
+        case let (a?, b?):
+            // свежее состояние побеждает, а напоминания берём из обоих
+            var newest = b.since > a.since ? b : a
+            for r in a.reminders + b.reminders where !newest.reminders.contains(r) {
+                newest.reminders.append(r)
+            }
+            return newest
         case let (a?, nil): return a
         case let (nil, b?): return b
         default: return BulkState()
