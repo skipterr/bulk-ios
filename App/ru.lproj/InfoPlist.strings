@@ -1,0 +1,3 @@
+/* Русское название под иконкой. В Info.plist имя латиницей: AltStore/Apple не принимают кириллицу в имени приложения. */
+"CFBundleDisplayName" = "Бульк";
+"CFBundleName" = "Бульк";
