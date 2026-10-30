@@ -12,6 +12,8 @@ struct BulkFrame {
     var bulbInLamp = true
     var shoeX: Double
     var shoeAir: Double = 0       // 0 — ботинок на полу, больше — в полёте
+    var flyX: Double? = nil       // муха (доли ширины и высоты комнаты), nil — мухи нет
+    var flyY: Double = 0.4
 }
 
 enum BulkScript {
@@ -22,10 +24,14 @@ enum BulkScript {
         var out: [BulkFrame] = []
         var x = startX, shoe = startShoe, light = startLight
 
-        func add(_ p: FramePose = FramePose(), lift: Double = 0, holding: Prop = .none, bulb: Bool = true, shoeAir: Double = 0) {
-            out.append(BulkFrame(action: action, x: x, lift: lift, pose: p, holding: holding, light: light,
-                                 bulbInLamp: bulb, shoeX: shoe, shoeAir: shoeAir))
+        func add(_ p: FramePose = FramePose(), lift: Double = 0, holding: Prop = .none, bulb: Bool = true, shoeAir: Double = 0,
+                 fly: (Double, Double)? = nil) {
+            var f = BulkFrame(action: action, x: x, lift: lift, pose: p, holding: holding, light: light,
+                              bulbInLamp: bulb, shoeX: shoe, shoeAir: shoeAir)
+            if let fly { f.flyX = fly.0; f.flyY = fly.1 }
+            out.append(f)
         }
+        func rnd(_ r: ClosedRange<Double>) -> Double { Double.random(in: r) }
         // Идёт вприпрыжку, шаг за кадр.
         func walk(to target: Double, holding: Prop = .none, bulb: Bool = true) {
             var hop = false
@@ -50,9 +56,51 @@ enum BulkScript {
 
         switch action {
         case .chill:
-            for i in 0..<5 {
-                add(FramePose(sx: i % 2 == 0 ? 1.02 : 0.98, sy: i % 2 == 0 ? 0.98 : 1.03, eyes: i == 3 ? Eyes.closed : nil))
+            // каждый раз по-разному: дышит, косится по сторонам, моргает невпопад, иногда подпрыгивает
+            let n = Int.random(in: 4...7)
+            var look = 0.0
+            for i in 0..<n {
+                if Double.random(in: 0...1) < 0.45 { look = [-1.0, -0.5, 0, 0.5, 1].randomElement()! }
+                let blink = Double.random(in: 0...1) < 0.18
+                let hop = Double.random(in: 0...1) < 0.12
+                add(FramePose(dy: hop ? -6 : 0, tilt: rnd(-3...3), sx: i % 2 == 0 ? 1.02 : 0.98, sy: i % 2 == 0 ? 0.98 : 1.03,
+                              eyes: blink ? Eyes.closed : nil, look: look))
             }
+        case .yawn:
+            add(FramePose(sy: 1.05, eyes: .closed, mouth: .o))
+            add(FramePose(sx: 0.95, sy: 1.12, eyes: .closed, mouth: .wide, arms: .up))
+            add(FramePose(sx: 0.95, sy: 1.14, eyes: .closed, mouth: .wide, arms: .up))
+            add(FramePose(sx: 1.06, sy: 0.94, eyes: .closed, mouth: .o))
+            add(FramePose(mouth: .flat))
+        case .lookAround:
+            for l in [-1.0, -1.0, 0, 1.0, 1.0, 0].shuffled() {
+                add(FramePose(tilt: l * 4, look: l))
+            }
+            add(FramePose(eyes: .closed))
+        case .sitDown:
+            add(FramePose(sx: 1.12, sy: 0.82))
+            for i in 0..<Int.random(in: 3...5) {
+                add(FramePose(sx: 1.24, sy: 0.66, eyes: i % 3 == 2 ? Eyes.closed : Eyes.happy, mouth: .smile, look: rnd(-1...1)))
+            }
+            add(FramePose(dy: -5, sx: 0.95, sy: 1.08))
+        case .coffee:
+            add(FramePose(arms: .drink), holding: .mug)
+            add(FramePose(tilt: -6, eyes: .closed, mouth: .o, arms: .drink), holding: .mug)
+            add(FramePose(tilt: -8, eyes: .closed, mouth: .o, arms: .drink), holding: .mug)
+            add(FramePose(eyes: .happy, mouth: .smile, arms: .drink), holding: .mug)
+            add(FramePose(tilt: -6, eyes: .closed, mouth: .o, arms: .drink), holding: .mug)
+            add(FramePose(eyes: .open, mouth: .smile, arms: .drink), holding: .mug)
+        case .fly:
+            // муха прилетает из ниоткуда, Бульк следит глазами и пытается прихлопнуть
+            var fx = x + 0.15, fy = 0.35
+            for _ in 0..<4 {
+                fx = min(0.95, max(0.05, x + rnd(-0.14...0.14)))
+                fy = rnd(0.25...0.55)
+                add(FramePose(eyes: .wide, mouth: .o, look: fx > x ? 1 : -1), fly: (fx, fy))
+            }
+            add(FramePose(dy: -8, eyes: .angry, mouth: .wide, arms: .up), fly: (fx, fy))
+            add(FramePose(sx: 1.1, sy: 0.9, eyes: .angry, mouth: .frown), fly: (min(0.95, fx + 0.2), 0.15))
+            add(FramePose(eyes: .happy, mouth: .grin))
         case .wave:
             for i in 0..<4 { add(FramePose(tilt: i % 2 == 0 ? 4 : -4, arms: i % 2 == 0 ? Arms.wave : Arms.waveLow)) }
         case .sleep:
@@ -130,7 +178,7 @@ enum BulkScript {
         }
 
         // Иногда просто гуляет после занятия.
-        if action == .chill && Double.random(in: 0...1) < 0.6 {
+        if [.chill, .lookAround, .sitDown, .coffee].contains(action) && Double.random(in: 0...1) < 0.55 {
             walk(to: Double.random(in: 0.15...0.85))
             add()
         }

@@ -7,6 +7,7 @@ struct FaceView: View {
     var mouth: Mouth
     var glow: Bool
     var blush: Double
+    var look: Double = 0          // -1 — смотрит влево, 1 — вправо
 
     var body: some View {
         Canvas { ctx, size in
@@ -66,9 +67,10 @@ struct FaceView: View {
                     ectx.fill(Path(ellipseIn: eyeRect), with: .color(.white))
                     ctx.stroke(Path(ellipseIn: eyeRect), with: .color(Color(white: 0.08)), lineWidth: 1.5)
                     let pr = eyes == .wide ? ew2 * 0.34 : ew2 * 0.5
-                    ctx.fill(Path(ellipseIn: CGRect(x: cx - pr, y: cy - pr + eh2 * 0.1, width: pr * 2, height: pr * 2)), with: .color(.black))
+                    let px = cx + CGFloat(look) * (ew2 - pr) * 0.9
+                    ctx.fill(Path(ellipseIn: CGRect(x: px - pr, y: cy - pr + eh2 * 0.1, width: pr * 2, height: pr * 2)), with: .color(.black))
                     let hr = pr * 0.32
-                    ctx.fill(Path(ellipseIn: CGRect(x: cx - pr * 0.35 - hr, y: cy - pr * 0.35 + eh2 * 0.1 - hr, width: hr * 2, height: hr * 2)), with: .color(.white))
+                    ctx.fill(Path(ellipseIn: CGRect(x: px - pr * 0.35 - hr, y: cy - pr * 0.35 + eh2 * 0.1 - hr, width: hr * 2, height: hr * 2)), with: .color(.white))
                     if eyes == .angry {
                         var b = Path()
                         b.move(to: CGPoint(x: cx + side * ew * 0.9, y: cy - eh * 1.55))
@@ -199,6 +201,24 @@ struct ShoeView: View {
     }
 }
 
+// Кружка кофе с паром.
+struct MugView: View {
+    var body: some View {
+        GeometryReader { g in
+            let w = g.size.width, h = g.size.height
+            ZStack {
+                RoundedRectangle(cornerRadius: w * 0.12).fill(Color(white: 0.95))
+                    .overlay(RoundedRectangle(cornerRadius: w * 0.12).stroke(Color(white: 0.08), lineWidth: 1))
+                    .frame(width: w * 0.72, height: h * 0.78).position(x: w * 0.42, y: h * 0.58)
+                Circle().stroke(Color(white: 0.95), lineWidth: w * 0.1)
+                    .frame(width: w * 0.32, height: w * 0.32).position(x: w * 0.82, y: h * 0.56)
+                Rectangle().fill(Color(red: 0.45, green: 0.28, blue: 0.16))
+                    .frame(width: w * 0.6, height: h * 0.1).position(x: w * 0.42, y: h * 0.27)
+            }
+        }
+    }
+}
+
 struct BottleView: View {
     var body: some View {
         GeometryReader { g in
@@ -245,6 +265,7 @@ struct BulkBody: View {
     var arms: Arms
     var holding: Prop
     var blush: Double
+    var look: Double = 0
 
     var body: some View {
         GeometryReader { g in
@@ -253,7 +274,7 @@ struct BulkBody: View {
             ZStack {
                 BlobShape().fill(bodyFill(w: w))
                 BlobShape().stroke(rim, lineWidth: 2)
-                FaceView(eyes: eyes, mouth: mouth, glow: dark, blush: blush)
+                FaceView(eyes: eyes, mouth: mouth, glow: dark, blush: blush, look: look)
                     .frame(width: w * 0.6, height: h * 0.62).position(x: w * 0.5, y: h * 0.4)
                 if holding == .bottle {
                     BottleView().frame(width: w * 0.12, height: h * 0.42)
@@ -264,6 +285,9 @@ struct BulkBody: View {
                 hand(at: rh, size: w * 0.17)
                 if holding == .bulb {
                     BulbView(on: false, size: w * 0.17).position(x: w * 0.5, y: h * 0.74)
+                }
+                if holding == .mug {
+                    MugView().frame(width: w * 0.2, height: w * 0.18).position(x: rh.x - w * 0.08, y: rh.y - h * 0.08)
                 }
             }
         }
@@ -436,6 +460,9 @@ extension BulkAction {
         case .poked: return BulkPose(x: 0.45, lift: false, tilt: 0, sx: 1.15, sy: 0.82, arms: .rest)
         case .mad: return BulkPose(x: 0.45, lift: false, tilt: 6, sx: 1, sy: 1.05, arms: .up)
         case .scared: return BulkPose(x: 0.45, lift: false, tilt: 0, sx: 0.95, sy: 1.05, arms: .hold)
+        case .yawn, .lookAround, .fly: return BulkPose(x: 0.45, lift: false, tilt: 0, sx: 1, sy: 1, arms: .rest)
+        case .sitDown: return BulkPose(x: 0.45, lift: false, tilt: 0, sx: 1.2, sy: 0.75, arms: .rest)
+        case .coffee: return BulkPose(x: 0.45, lift: false, tilt: 0, sx: 1, sy: 1, arms: .drink)
         }
     }
 
@@ -443,6 +470,7 @@ extension BulkAction {
         switch self {
         case .drink: return .bottle
         case .inDark: return .bulb
+        case .coffee: return .mug
         default: return .none
         }
     }
@@ -468,6 +496,7 @@ extension BulkAction {
         case .kick: return 1.4
         case .dance: return 1
         case .scared: return 0.36
+        case .yawn, .lookAround, .sitDown, .coffee, .fly: return 3
         }
     }
 
@@ -519,6 +548,10 @@ extension BulkAction {
         case .poked:
             f.sy = 1 + 0.06 * s
             f.sx = 1 - 0.05 * s
+        case .yawn, .sitDown, .coffee:
+            f.sy = 1 + 0.03 * s
+        case .lookAround, .fly:
+            f.look = s
         case .scared:
             f.dx = odd ? 1.5 : -1.5
         }
@@ -536,6 +569,7 @@ struct FramePose {
     var eyes: Eyes? = nil
     var mouth: Mouth? = nil
     var arms: Arms? = nil
+    var look: Double? = nil
 }
 
 struct BulkScene: View {
@@ -550,8 +584,12 @@ struct BulkScene: View {
         (sin(clock * 1.3) * 4 + sin(clock * 0.47) * 2) * (frame.lift > 0.8 ? 2.5 : 1)
     }
 
-    // кроссовок изредка сам подпрыгивает и дёргается
-    private var shoeHop: Bool { frame.shoeAir == 0 && Int(clock / 1.5) % 9 == 0 }
+    // кроссовок изредка сам подпрыгивает и дёргается — в случайные моменты, а не по расписанию
+    private var shoeHop: Bool {
+        guard frame.shoeAir == 0 else { return false }
+        let r = sin((clock / 1.5).rounded() * 12.9898) * 43758.5453
+        return r - r.rounded(.down) < 0.07
+    }
 
     private var action: BulkAction { frame.action }
     private var lightOn: Bool { frame.light }
@@ -599,12 +637,23 @@ struct BulkScene: View {
                      angry: action == .mad || action == .swear,
                      arms: f.arms ?? .rest,
                      holding: frame.holding,
-                     blush: min(1, tipsy) * 0.5)
+                     blush: min(1, tipsy) * 0.5,
+                     look: f.look ?? 0)
                 .frame(width: bodyW * sx, height: bodyH * sy)
                 .rotationEffect(.degrees(f.tilt + (drunkLook ? 8 : 0)), anchor: .bottom)
                 .position(x: bx, y: bottomY - bodyH * sy / 2)
 
             effects(bx: bx, topY: bottomY - bodyH * sy, bodyW: bodyW)
+
+            // муха-пасхалка
+            if let fx = frame.flyX {
+                ZStack {
+                    Ellipse().fill(Color.white.opacity(0.55)).frame(width: 5, height: 3).offset(x: -2, y: -2.5)
+                    Ellipse().fill(Color.white.opacity(0.55)).frame(width: 5, height: 3).offset(x: 2, y: -2.5)
+                    Circle().fill(Color.black).frame(width: 4, height: 4)
+                }
+                .position(x: w * CGFloat(fx), y: h * CGFloat(frame.flyY))
+            }
 
             if !phrase.isEmpty {
                 bubble(phrase)

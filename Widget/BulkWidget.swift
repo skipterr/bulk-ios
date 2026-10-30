@@ -34,7 +34,7 @@ struct BulkProvider: TimelineProvider {
         let userHold: TimeInterval = 40
         let fresh = s.byUser && now.timeIntervalSince(s.since) < userHold
         if !fresh {
-            s.set(BulkBrain.next(after: s.action, lightOn: s.lightOn), at: now)
+            s.set(BulkBrain.next(after: s.action, lightOn: s.lightOn, at: now), at: now)
         }
         var action = s.action
         var phrase = s.phrase
@@ -66,7 +66,7 @@ struct BulkProvider: TimelineProvider {
                 }
             } while plays < 2 && t < repeatUntil && t < end
             first = false
-            action = BulkBrain.next(after: action, lightOn: light)
+            action = BulkBrain.next(after: action, lightOn: light, at: t)
             phrase = action.phrases.randomElement() ?? ""
             tipsy = action == .drink ? min(1.6, tipsy + 0.6) : max(0, tipsy - 0.05)
         }

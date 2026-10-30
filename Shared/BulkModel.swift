@@ -3,11 +3,12 @@ import Foundation
 enum Eyes: String, Codable { case open, closed, happy, wide, angry, dizzy, drunk }
 enum Mouth: String, Codable { case smile, grin, o, wide, flat, frown, wavy }
 enum Arms: String, Codable { case rest, up, wave, waveLow, hold, drink }
-enum Prop: String, Codable { case none, bottle, bulb }
+enum Prop: String, Codable { case none, bottle, bulb, mug }
 
 // Всё, чем Бульк может быть занят. Одно действие = одна сценка в виджете.
 enum BulkAction: String, Codable, CaseIterable {
     case chill, wave, sleep, burp, swear, drink, unscrew, inDark, screwBack, fixLight, kick, dance, stare, poked, mad, scared
+    case yawn, lookAround, sitDown, coffee, fly
 
     var status: String {
         switch self {
@@ -27,6 +28,11 @@ enum BulkAction: String, Codable, CaseIterable {
         case .poked: return "возмущается"
         case .mad: return "злой"
         case .scared: return "боится темноты"
+        case .yawn: return "зевает"
+        case .lookAround: return "осматривается"
+        case .sitDown: return "присел отдохнуть"
+        case .coffee: return "пьёт кофе"
+        case .fly: return "гоняет муху"
         }
     }
 
@@ -48,6 +54,11 @@ enum BulkAction: String, Codable, CaseIterable {
         case .poked: return ["эй!", "щекотно!", "хи-хи", "ну чё?"]
         case .mad: return ["ДА ОТСТАНЬ!", "ну всё, бля!", "щас укушу!"]
         case .scared: return ["эй! кто выключил?", "мне страшно...", "мама..."]
+        case .yawn: return ["аааах...", "спать охота", ""]
+        case .lookAround: return ["", "чё там?", "хм", "кто тут?"]
+        case .sitDown: return ["", "ноги гудят", "кайф", "посижу"]
+        case .coffee: return ["кофеёк...", "без кофе не человек", "бодрит"]
+        case .fly: return ["бзззз...", "ах ты ж сука!", "муха, бля!"]
         }
     }
 
@@ -57,7 +68,10 @@ enum BulkAction: String, Codable, CaseIterable {
         case .wave, .inDark, .kick, .dance: return .happy
         case .sleep, .burp, .drink: return .closed
         case .swear, .mad: return .angry
-        case .fixLight, .stare, .scared: return .wide
+        case .fixLight, .stare, .scared, .fly: return .wide
+        case .lookAround: return .open
+        case .yawn, .coffee: return .closed
+        case .sitDown: return .happy
         }
     }
 
@@ -69,6 +83,10 @@ enum BulkAction: String, Codable, CaseIterable {
         case .burp, .swear: return .wide
         case .screwBack, .fixLight, .stare: return .flat
         case .mad, .scared: return .frown
+        case .lookAround: return .flat
+        case .yawn: return .wide
+        case .coffee, .fly: return .o
+        case .sitDown: return .smile
         }
     }
 
@@ -158,19 +176,37 @@ enum BulkStore {
 }
 
 enum BulkBrain {
-    // Сам решает, чем заняться дальше.
-    static func next(after a: BulkAction, lightOn: Bool) -> BulkAction {
+    // Сам решает, чем заняться дальше. Живёт по времени суток:
+    // ночью в основном спит, утром кофе и зевота, в пятницу вечером пьёт и танцует, в понедельник утром бурчит.
+    static func next(after a: BulkAction, lightOn: Bool, at date: Date = .now) -> BulkAction {
         switch a {
         case .unscrew: return .inDark
         case .inDark: return .screwBack
         default: break
         }
         if !lightOn { return .fixLight }
-        let pool: [(BulkAction, Double)] = [
-            (.chill, 3), (.wave, 1), (.sleep, 1.2), (.burp, 1), (.swear, 1),
-            (.drink, 1), (.unscrew, 1), (.kick, 1.2), (.dance, 1), (.stare, 1)
+        var w: [BulkAction: Double] = [
+            .chill: 2, .lookAround: 1.6, .sitDown: 1, .yawn: 0.6, .wave: 0.8, .sleep: 0.8, .burp: 0.8,
+            .swear: 0.8, .drink: 0.8, .unscrew: 0.8, .kick: 1, .dance: 0.8, .stare: 0.8, .fly: 0.6
         ]
-        let options = pool.filter { $0.0 != a }
+        let cal = Calendar.current
+        let hour = cal.component(.hour, from: date)
+        let weekday = cal.component(.weekday, from: date) // 1 — воскресенье, 2 — понедельник, 6 — пятница
+        switch hour {
+        case 0..<7:
+            w[.sleep] = 8; w[.yawn] = 1.5; w[.dance] = 0.2; w[.kick] = 0.3
+        case 7..<11:
+            w[.coffee] = 2.5; w[.yawn] = 2; w[.sleep] = 0.3
+            if weekday == 2 { w[.swear] = 2.5 }
+        case 22..<24:
+            w[.sleep] = 3; w[.yawn] = 2
+        default:
+            break
+        }
+        if weekday == 6 && hour >= 18 || weekday == 7 && hour < 3 {
+            w[.drink] = 3; w[.dance] = 2.5; w[.burp] = 1.5
+        }
+        let options = w.filter { $0.key != a }.map { ($0.key, $0.value) }
         let total = options.reduce(0) { $0 + $1.1 }
         var r = Double.random(in: 0..<total)
         for (action, weight) in options {
