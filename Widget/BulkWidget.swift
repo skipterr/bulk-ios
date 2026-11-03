@@ -41,7 +41,8 @@ struct BulkProvider: TimelineProvider {
         let userHold: TimeInterval = 40
         let fresh = s.byUser && now.timeIntervalSince(s.since) < userHold
         if !fresh {
-            s.set(BulkBrain.next(after: s.action, lightOn: s.lightOn, at: now), at: now)
+            s.set(BulkBrain.next(after: s.action, lightOn: s.lightOn, at: now,
+                                 offended: s.offended(at: now), missing: s.missing(at: now), mood: s.moodNow(at: now)), at: now)
         }
         var action = s.action
         var phrase = s.phrase
@@ -80,8 +81,14 @@ struct BulkProvider: TimelineProvider {
                 }
             } while plays < 2 && t < repeatUntil && t < end
             first = false
-            action = BulkBrain.next(after: action, lightOn: light, at: t)
+            action = BulkBrain.next(after: action, lightOn: light, at: t,
+                                    offended: s.offended(at: t), missing: s.missing(at: t), mood: s.moodNow(at: t))
             phrase = action.phrases.randomElement() ?? ""
+            // будильник: утром Бульк будит тебя с кружкой
+            let hour = Calendar.current.component(.hour, from: t)
+            if (6..<10).contains(hour) && [.coffee, .yawn].contains(action) && Double.random(in: 0...1) < 0.6 {
+                phrase = ["вставай, соня ☕", "подъём, бро ☕", "утро! кофе будешь? ☕"].randomElement()!
+            }
             tipsy = action == .drink ? min(1.6, tipsy + 0.6) : max(0, tipsy - 0.05)
         }
         // Запоминаем, где Бульк окажется, чтобы следующий план продолжился оттуда же.

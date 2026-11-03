@@ -266,6 +266,8 @@ struct BulkBody: View {
     var holding: Prop
     var blush: Double
     var look: Double = 0
+    /// true — Бульк отвернулся (обиделся): лица не видно
+    var back: Bool = false
 
     var body: some View {
         GeometryReader { g in
@@ -274,8 +276,10 @@ struct BulkBody: View {
             ZStack {
                 BlobShape().fill(bodyFill(w: w))
                 BlobShape().stroke(rim, lineWidth: 2)
-                FaceView(eyes: eyes, mouth: mouth, glow: dark, blush: blush, look: look)
-                    .frame(width: w * 0.6, height: h * 0.62).position(x: w * 0.5, y: h * 0.4)
+                if !back {
+                    FaceView(eyes: eyes, mouth: mouth, glow: dark, blush: blush, look: look)
+                        .frame(width: w * 0.6, height: h * 0.62).position(x: w * 0.5, y: h * 0.4)
+                }
                 if holding == .bottle {
                     BottleView().frame(width: w * 0.12, height: h * 0.42)
                         .rotationEffect(.degrees(-40))
@@ -463,6 +467,9 @@ extension BulkAction {
         case .yawn, .lookAround, .fly: return BulkPose(x: 0.45, lift: false, tilt: 0, sx: 1, sy: 1, arms: .rest)
         case .sitDown: return BulkPose(x: 0.45, lift: false, tilt: 0, sx: 1.2, sy: 0.75, arms: .rest)
         case .coffee: return BulkPose(x: 0.45, lift: false, tilt: 0, sx: 1, sy: 1, arms: .drink)
+        case .sulk, .missYou: return BulkPose(x: 0.45, lift: false, tilt: 0, sx: 1.05, sy: 0.92, arms: .rest)
+        case .cheer: return BulkPose(x: 0.45, lift: false, tilt: 0, sx: 1, sy: 1, arms: .up)
+        case .hug: return BulkPose(x: 0.45, lift: false, tilt: 0, sx: 1, sy: 1, arms: .hold)
         }
     }
 
@@ -497,6 +504,8 @@ extension BulkAction {
         case .dance: return 1
         case .scared: return 0.36
         case .yawn, .lookAround, .sitDown, .coffee, .fly: return 3
+        case .sulk, .missYou, .hug: return 3
+        case .cheer: return 1
         }
     }
 
@@ -552,6 +561,11 @@ extension BulkAction {
             f.sy = 1 + 0.03 * s
         case .lookAround, .fly:
             f.look = s
+        case .sulk, .missYou, .hug:
+            f.sy = 1 + 0.02 * s
+        case .cheer:
+            f.dy = -6 * abs(s)
+            f.arms = odd ? .up : .wave
         case .scared:
             f.dx = odd ? 1.5 : -1.5
         }
@@ -570,6 +584,7 @@ struct FramePose {
     var mouth: Mouth? = nil
     var arms: Arms? = nil
     var look: Double? = nil
+    var back: Bool? = nil
 }
 
 struct BulkScene: View {
@@ -636,7 +651,8 @@ struct BulkScene: View {
                      arms: f.arms ?? .rest,
                      holding: frame.holding,
                      blush: min(1, tipsy) * 0.5,
-                     look: f.look ?? 0)
+                     look: f.look ?? 0,
+                     back: f.back ?? false)
                 .frame(width: bodyW * sx, height: bodyH * sy)
                 .rotationEffect(.degrees(f.tilt + (drunkLook ? 8 : 0)), anchor: .bottom)
                 .position(x: bx, y: bottomY - bodyH * sy / 2)

@@ -9,6 +9,7 @@ enum Prop: String, Codable { case none, bottle, bulb, mug }
 enum BulkAction: String, Codable, CaseIterable {
     case chill, wave, sleep, burp, swear, drink, unscrew, inDark, screwBack, fixLight, kick, dance, stare, poked, mad, scared
     case yawn, lookAround, sitDown, coffee, fly
+    case sulk, missYou, cheer, hug
 
     var status: String {
         switch self {
@@ -33,6 +34,10 @@ enum BulkAction: String, Codable, CaseIterable {
         case .sitDown: return "присел отдохнуть"
         case .coffee: return "пьёт кофе"
         case .fly: return "гоняет муху"
+        case .sulk: return "обиделся"
+        case .missYou: return "скучает"
+        case .cheer: return "празднует за тебя"
+        case .hug: return "поддерживает тебя"
         }
     }
 
@@ -59,6 +64,10 @@ enum BulkAction: String, Codable, CaseIterable {
         case .sitDown: return ["", "ноги гудят", "кайф", "посижу"]
         case .coffee: return ["кофеёк...", "без кофе не человек", "бодрит"]
         case .fly: return ["бзззз...", "ах ты ж сука!", "муха, бля!"]
+        case .sulk: return ["хмф", "не разговариваю", "обиделся", ""]
+        case .missYou: return ["ты где?", "скучно без тебя...", "зайди хоть", "ау?"]
+        case .cheer: return ["ты лучший!", "празднуем!", "красавчик!", "гордость моя"]
+        case .hug: return ["я с тобой", "держись, бро", "всё наладится", "обнимашки"]
         }
     }
 
@@ -72,6 +81,9 @@ enum BulkAction: String, Codable, CaseIterable {
         case .lookAround: return .open
         case .yawn, .coffee: return .closed
         case .sitDown: return .happy
+        case .sulk: return .angry
+        case .missYou: return .drunk
+        case .cheer, .hug: return .happy
         }
     }
 
@@ -87,6 +99,9 @@ enum BulkAction: String, Codable, CaseIterable {
         case .yawn: return .wide
         case .coffee, .fly: return .o
         case .sitDown: return .smile
+        case .sulk, .missYou: return .frown
+        case .cheer: return .grin
+        case .hug: return .smile
         }
     }
 
@@ -104,6 +119,18 @@ struct Reminder: Codable, Equatable {
     var text: String
     var at: Date
     var id: String = UUID().uuidString   // он же id уведомления — чтобы отменить, если дело уже сделано
+
+    init(text: String, at: Date) {
+        self.text = text
+        self.at = at
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        text = try c.decode(String.self, forKey: .text)
+        at = try c.decode(Date.self, forKey: .at)
+        id = (try? c.decodeIfPresent(String.self, forKey: .id)) ?? UUID().uuidString
+    }
 }
 
 struct BulkState: Codable {
@@ -139,6 +166,47 @@ struct BulkState: Codable {
     var byUser = false
     /// кто записал состояние: "app" или "widget" (для диагностики связи)
     var writer = ""
+    /// До какого момента Бульк обижен (задолбал тычками).
+    var offendedUntil: Date = .distantPast
+    /// Когда ты последний раз заходил в приложение (для «ты где?»).
+    var lastVisit: Date = .now
+    /// Настроение после твоего рассказа о дне: "support" — поддерживает, "cheer" — празднует.
+    var mood = ""
+    var moodUntil: Date = .distantPast
+
+    init() {}
+
+    // Читаем поля по одному: если в сохранённых данных какого-то поля ещё нет (обновление),
+    // берём значение по умолчанию, а не сбрасываем всё состояние вместе с напоминаниями.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        func get<T: Decodable>(_ key: CodingKeys, _ fallback: T) -> T {
+            (try? c.decodeIfPresent(T.self, forKey: key)) ?? fallback
+        }
+        let d = BulkState()
+        action = get(.action, d.action)
+        phrase = get(.phrase, d.phrase)
+        since = get(.since, d.since)
+        lightOn = get(.lightOn, d.lightOn)
+        tipsy = get(.tipsy, d.tipsy)
+        tipsyAt = get(.tipsyAt, d.tipsyAt)
+        pokes = get(.pokes, d.pokes)
+        lastPoke = get(.lastPoke, d.lastPoke)
+        x = get(.x, d.x)
+        shoeX = get(.shoeX, d.shoeX)
+        reminders = get(.reminders, d.reminders)
+        byUser = get(.byUser, d.byUser)
+        writer = get(.writer, d.writer)
+        offendedUntil = get(.offendedUntil, d.offendedUntil)
+        lastVisit = get(.lastVisit, d.lastVisit)
+        mood = get(.mood, d.mood)
+        moodUntil = get(.moodUntil, d.moodUntil)
+    }
+
+    func offended(at date: Date) -> Bool { date < offendedUntil }
+    func moodNow(at date: Date) -> String { date < moodUntil ? mood : "" }
+    /// Не заходил больше двух суток.
+    func missing(at date: Date) -> Bool { date.timeIntervalSince(lastVisit) > 48 * 3600 }
 
     mutating func set(_ a: BulkAction, at date: Date, byUser: Bool = false) {
         self.byUser = byUser
@@ -196,13 +264,21 @@ enum BulkStore {
 enum BulkBrain {
     // Сам решает, чем заняться дальше. Живёт по времени суток:
     // ночью в основном спит, утром кофе и зевота, в пятницу вечером пьёт и танцует, в понедельник утром бурчит.
-    static func next(after a: BulkAction, lightOn: Bool, at date: Date = .now) -> BulkAction {
+    static func next(after a: BulkAction, lightOn: Bool, at date: Date = .now,
+                     offended: Bool = false, missing: Bool = false, mood: String = "") -> BulkAction {
         switch a {
         case .unscrew: return .inDark
         case .inDark: return .screwBack
         default: break
         }
         if !lightOn { return .fixLight }
+        // обижен — сидит спиной, пока не отойдёт
+        if offended { return .sulk }
+        // твой день: празднует или поддерживает (вперемешку с обычными делами)
+        if mood == "cheer" && Double.random(in: 0...1) < 0.55 { return [.cheer, .dance, .drink].randomElement()! }
+        if mood == "support" && Double.random(in: 0...1) < 0.55 { return [.hug, .hug, .sitDown].randomElement()! }
+        // давно не заходил — скучает
+        if missing && Double.random(in: 0...1) < 0.5 { return .missYou }
         var w: [BulkAction: Double] = [
             .chill: 2, .lookAround: 1.6, .sitDown: 1, .yawn: 0.6, .wave: 0.8, .sleep: 0.8, .burp: 0.8,
             .swear: 0.8, .drink: 0.8, .unscrew: 0.8, .kick: 1, .dance: 0.8, .stare: 0.8, .fly: 0.6

@@ -47,8 +47,15 @@ struct BulkWebView: UIViewRepresentable {
         if !key.isEmpty { KeyVault.save(key) }
         // и память Булька о тебе (переписка + факты), если она есть
         let memory = KeyVault.load(account: "memory") ?? ""
+        // и настроение Булька: обижен ли, давно ли ты заходил, празднует/поддерживает ли
+        var s = BulkStore.load()
+        let now = Date()
+        let mood = "{\"offendedUntil\":\(Int(s.offendedUntil.timeIntervalSince1970 * 1000)),\"awayHours\":\(Int(now.timeIntervalSince(s.lastVisit) / 3600)),\"mood\":\(jsString(s.moodNow(at: now)))}"
+        s.lastVisit = now
+        BulkStore.save(s, writer: "app")
+        WidgetCenter.shared.reloadAllTimelines()
         config.userContentController.addUserScript(WKUserScript(
-            source: "window.__geminiKey = \(jsString(key)); window.__bulkMemory = \(jsString(memory));",
+            source: "window.__geminiKey = \(jsString(key)); window.__bulkMemory = \(jsString(memory)); window.__bulkMood = \(mood);",
             injectionTime: .atDocumentStart, forMainFrameOnly: true))
 
         let web = WKWebView(frame: .zero, configuration: config)
@@ -85,6 +92,23 @@ struct BulkWebView: UIViewRepresentable {
                     if let json = dict["json"] as? String { KeyVault.save(json, account: "memory") }
                 case "reminderDone":
                     Reminders.markDone(hint: dict["hint"] as? String ?? "")
+                case "forgive":
+                    var s = BulkStore.load()
+                    s.offendedUntil = .distantPast
+                    s.set(.wave, at: Date(), byUser: true)
+                    s.phrase = "ладно, мир"
+                    BulkStore.save(s, writer: "app")
+                    WidgetCenter.shared.reloadAllTimelines()
+                case "mood":
+                    // твой день: support — поддерживает, cheer — празднует (несколько часов)
+                    guard let mood = dict["mood"] as? String, ["support", "cheer"].contains(mood) else { return }
+                    let hours = (dict["hours"] as? Double) ?? 6
+                    var s = BulkStore.load()
+                    s.mood = mood
+                    s.moodUntil = Date().addingTimeInterval(hours * 3600)
+                    s.set(mood == "cheer" ? .cheer : .hug, at: Date(), byUser: true)
+                    BulkStore.save(s, writer: "app")
+                    WidgetCenter.shared.reloadAllTimelines()
                 case "remind":
                     if let text = dict["text"] as? String, let at = dict["at"] as? String {
                         Reminders.add(text: text, at: at)
@@ -98,6 +122,7 @@ struct BulkWebView: UIViewRepresentable {
             guard let name = message.body as? String, let action = BulkAction(rawValue: name) else { return }
             var s = BulkStore.load()
             s.set(action, at: Date(), byUser: true)
+            if action == .sulk { s.offendedUntil = Date().addingTimeInterval(20 * 60) }
             if action == .chill {
                 s.lightOn = true
                 s.phrase = "о, свет!"

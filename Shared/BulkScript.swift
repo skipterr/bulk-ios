@@ -173,6 +173,31 @@ enum BulkScript {
             add(FramePose(sx: 1.15, sy: 0.82, eyes: .closed, mouth: .o))
             add(FramePose(mouth: .frown))
             add()
+        case .sulk:
+            // сидит спиной, иногда косится через плечо и снова отворачивается
+            for i in 0..<Int.random(in: 5...8) {
+                let peek = i % 4 == 3
+                add(FramePose(tilt: peek ? 6 : rnd(-2...2), sx: 1.05, sy: 0.92, eyes: .angry, mouth: .frown,
+                              look: peek ? 1 : nil, back: !peek))
+            }
+        case .missYou:
+            // грустит, смотрит то на тебя, то в пол, вздыхает
+            for i in 0..<Int.random(in: 5...7) {
+                add(FramePose(tilt: rnd(-3...3), sx: 1.05, sy: i % 2 == 0 ? 0.9 : 0.94,
+                              eyes: i % 3 == 2 ? Eyes.closed : Eyes.drunk, mouth: .frown, look: rnd(-0.5...0.5)))
+            }
+        case .cheer:
+            for i in 0..<6 {
+                add(FramePose(dy: i % 2 == 0 ? -10 : 0, tilt: i % 2 == 0 ? 10 : -10, eyes: .happy, mouth: .grin,
+                              arms: i % 2 == 0 ? Arms.up : Arms.wave))
+            }
+        case .hug:
+            // тянет руки к тебе — «обнимашки»
+            add(FramePose(eyes: .open, mouth: .smile, arms: .hold))
+            for _ in 0..<4 {
+                add(FramePose(sx: 1.06, sy: 0.96, eyes: .happy, mouth: .smile, arms: .hold))
+            }
+            add(FramePose(dy: -4, eyes: .happy, mouth: .smile, arms: .wave))
         case .scared:
             for i in 0..<4 { add(FramePose(dx: i % 2 == 0 ? 2 : -2, eyes: .wide, mouth: .frown, arms: .hold)) }
         }

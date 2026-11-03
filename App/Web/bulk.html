@@ -132,7 +132,8 @@ const NAMES = {
   swear: 'ругается', burp: 'рыгает', drink: 'выпивает', unscrew: 'ворует лампочку',
   screwBack: 'вкручивает обратно', fix: 'включает свет', kick: 'пинает ботинок', dance: 'танцует',
   stare: 'пялится на тебя', held: 'у тебя в руках', flying: 'летит', poked: 'возмущается',
-  wake: 'проснулся злой', scared: 'боится темноты', read: 'читает письмо', meet: 'знакомится'
+  wake: 'проснулся злой', scared: 'боится темноты', read: 'читает письмо', meet: 'знакомится',
+  sulk: 'обиделся', hug: 'поддерживает тебя'
 };
 
 // ---------- мир ----------
@@ -460,6 +461,24 @@ const ACT = {
       return !chat.waiting && this.t > 0.5;
     }, end() { b.holdLetter = false; } };
   },
+  sulk() {
+    let peekT = 0;
+    return { update(dt) {
+      b.vx = 0; b.back = true; b.eyes = 'angry'; b.mouth = 'frown'; b.sTarget = 0.93;
+      peekT += dt;
+      // иногда косится через плечо
+      if (peekT > 6) { b.back = false; b.lookT = { x: 1, y: 0 }; if (peekT > 7.2) { peekT = 0; if (Math.random() < 0.5) say('хмф', 1); } }
+      if (!sulking()) { b.back = false; say(pick(['ладно, прощаю', 'ну ладно...', 'мир?']), 2); return true; }
+      return false;
+    } };
+  },
+  hug() {
+    return { update() {
+      b.vx = 0; b.eyes = this.t < 0.6 ? 'open' : 'happy'; b.mouth = 'smile'; b.lookT = { x: 0, y: 0.2 };
+      b.poseT = { l: [-0.55, 0.05], r: [0.55, 0.05] }; b.sTarget = 1 + Math.sin(this.t * 3) * 0.03;
+      return this.t > 3.5;
+    } };
+  },
   stare() {
     say(pick(P.stare), 2.2);
     return { update() {
@@ -530,6 +549,7 @@ const ACT = {
 };
 
 function brain() {
+  if (sulking()) { setAct('sulk'); return; }
   if (!lamp.hasBulb) { setAct(lastName !== 'idle' && Math.random() < 0.5 ? 'idle' : 'screwBack'); return; }
   if (!lamp.on) { setAct('fix'); return; }
   if (lastName && lastName !== 'idle' && Math.random() < 0.45) { setAct('idle'); return; }
@@ -549,11 +569,30 @@ function brain() {
 function notifyWidget(action) {
   try { window.webkit.messageHandlers.bulk.postMessage(action); } catch (_) {}
 }
+// ---------- обида, тоска, настроение (часть приходит из приложения при запуске) ----------
+const moodBoot = window.__bulkMood || {};
+let sulkUntil = Number(moodBoot.offendedUntil) || 0;
+let madTimes = [];
+let dayMood = String(moodBoot.mood || '');
+function sulking() { return Date.now() < sulkUntil; }
+function startSulk() {
+  sulkUntil = Date.now() + 20 * 60 * 1000;
+  setAct('sulk');
+  say(pick(['всё, я обиделся', 'не разговариваю с тобой', 'хмф. обиделся']), 2.5);
+  notifyWidget('sulk');
+}
 function poke() {
   if (b.grabbed || b.hang) return;
+  if (sulking()) { b.sv -= 1.5; say(pick(['не трогай меня', 'я обиделся', 'отстань', 'хмф']), 1.4); return; }
   if (b.asleep) { setAct('wake'); notifyWidget('mad'); return; }
   pokes += 1; b.sv -= 2.8; if (b.ground) b.vx += rand(-1, 1) * R;
-  if (pokes >= 5) { pokes = 1.5; setAct('swear'); say(pick(P.pokeMad), 2); notifyWidget('mad'); return; }
+  if (pokes >= 5) {
+    pokes = 1.5;
+    const now = Date.now();
+    madTimes = madTimes.filter(m => now - m < 10 * 60 * 1000).concat(now);
+    if (madTimes.length >= 2) { madTimes = []; startSulk(); return; }
+    setAct('swear'); say(pick(P.pokeMad), 2); notifyWidget('mad'); return;
+  }
   notifyWidget('poked');
   if (act && act.kind) { say(pick(P.poke), 1); return; }
   setAct('poked');
@@ -635,6 +674,7 @@ const BULK_PERSONA = `Ты Бульк — маленький серый круг
 Отвечай строго JSON: {"reply": "текст ответа", "action": "одно из: none, drink, sleep, dance, burp, swear, wave, jump, kick, unscrew, light_off, light_on, stare"}.
 action выбирай по смыслу: зовут выпить — drink, говорят спать — sleep, праздник или музыка — dance, злишься — swear, приветствие — wave, выключить свет — light_off, включить — light_on. Если ничего не подходит — none.
 Если хозяин рассказал о себе что-то, что стоит запомнить надолго (имя, близкие, работа, увлечения, планы, что любит и не любит), добавь в JSON поле "remember": "короткий факт от третьего лица, например: Хозяина зовут Марк". Потом сам вспоминай эти факты к месту.
+Если хозяин рассказывает, как прошёл его день: плохое (завалил, устал, грустно, поругался) — поддержи по-дружески и добавь "mood": "support"; хорошее (сдал, получилось, праздник, повезло) — порадуйся вместе и добавь "mood": "cheer".
 Если хозяин говорит, что уже сделал то, о чём ты напоминал (или собирался напомнить), похвали его и добавь поле "reminder_done": "пара ключевых слов этого дела".
 Если хозяин просит напомнить о чём-то, добавь в JSON поле "reminder": {"text": "короткий текст напоминания в твоём стиле", "at": "ГГГГ-ММ-ДДTЧЧ:ММ"} — местное время, считай от текущего момента. Если время не сказали — спроси в reply и reminder не добавляй. В остальных случаях "reminder" не нужен.`;
 
@@ -677,6 +717,7 @@ async function askGemini(text) {
   chat.history = chat.history.slice(-12);
   const body = {
     systemInstruction: { parts: [{ text: BULK_PERSONA + '\nСейчас: ' + nowForPrompt() + '.' +
+      (sulking() ? '\nСейчас ты ОБИЖЕН на хозяина: он задолбал тебя тычками. Отвечай обиженно и коротко, через губу. Если он искренне извиняется — прости его и добавь в JSON \"forgive\": true.' : '') +
       (chat.facts.length ? '\nЧто ты знаешь о хозяине:\n- ' + chat.facts.join('\n- ') : '') }] },
     contents: chat.history,
     generationConfig: { responseMimeType: 'application/json', temperature: 1, maxOutputTokens: 1024 }
@@ -728,6 +769,14 @@ function performChat(out) {
     if (!chat.facts.includes(fact)) chat.facts.push(fact);
   }
   saveMemory();
+  if (out.forgive && sulking()) {
+    sulkUntil = 0;
+    try { window.webkit.messageHandlers.bulk.postMessage({ type: 'forgive' }); } catch (_) {}
+  }
+  if (out.mood === 'support' || out.mood === 'cheer') {
+    dayMood = out.mood;
+    try { window.webkit.messageHandlers.bulk.postMessage({ type: 'mood', mood: out.mood, hours: 6 }); } catch (_) {}
+  }
   if (out.reminder_done) {
     try { window.webkit.messageHandlers.bulk.postMessage({ type: 'reminderDone', hint: String(out.reminder_done).slice(0, 80) }); } catch (_) {}
   }
@@ -745,6 +794,11 @@ function performChat(out) {
     if (!(n === 'kick' && !shoeResting()) && !(n === 'unscrew' && !lamp.hasBulb)) setAct(n);
     notifyWidget(n === 'jumpy' ? 'dance' : n);
   }
+  // рассказал о дне — сразу обнимает или пляшет от радости
+  if ((out.mood === 'cheer' || out.mood === 'support') && !CHAT_ACTIONS[a] && free() && !b.asleep && !sulking()) {
+    setAct(out.mood === 'cheer' ? 'dance' : 'hug');
+  }
+  if (out.forgive && !sulking() && act && act.name === 'sulk') setAct('wave');
   say(reply, clamp(2.5 + reply.length * 0.06, 3.5, 10), true);
 }
 
@@ -986,7 +1040,7 @@ function physics(dt) {
 
 // ---------- кадр ----------
 function resetFrame() {
-  b.eyes = 'open'; b.mouth = 'flat'; b.brow = 0; b.redT = 0; b.sTarget = 1; b.jitter = 0; b.walking = false;
+  b.eyes = 'open'; b.mouth = 'flat'; b.brow = 0; b.redT = 0; b.sTarget = 1; b.jitter = 0; b.walking = false; b.back = false;
   b.poseT = b.holdBulb ? BULB_POSE : REST;
   b.tiltT = b.tipsy > 0.4 ? Math.sin(T * 2.1) * 0.09 * b.tipsy : 0;
 }
@@ -1185,7 +1239,7 @@ function drawBlob(lv) {
   ctx.fillStyle = `rgba(255,255,255,${0.08 * la})`;
   ctx.beginPath(); ctx.ellipse(ldir * rx * 0.35 - rx * 0.1, -ry * 1.6, rx * 0.16, ry * 0.1, -0.5, 0, Math.PI * 2); ctx.fill();
 
-  drawFace(rx, ry, lv, mid);
+  if (!b.back) drawFace(rx, ry, lv, mid);
   drawHands(rx, ry, mid, lo, lv);
   ctx.restore();
 }
@@ -1425,7 +1479,12 @@ function frame(now) {
 function start() {
   handFont = getComputedStyle(document.documentElement).getPropertyValue('--font-hand').trim() || 'cursive';
   resize();
-  setAct('wave');
+  if (sulking()) { setAct('sulk'); }
+  else {
+    setAct('wave');
+    // давно не заходил — Бульк это заметил
+    if ((moodBoot.awayHours || 0) >= 48) setTimeout(() => say(pick(['ну наконец-то! ты где был?', 'я уж думал, ты меня бросил', 'явился! я скучал...']), 3.5), 300);
+  }
   // новый хозяин (ключа ещё нет) — Бульк знакомится
   if (!geminiKey) setTimeout(() => { if (onboard.step < 0) { onboard.step = -1; nextOnboard(); } }, 1200);
   requestAnimationFrame(t => { last = t; frame(t); });
