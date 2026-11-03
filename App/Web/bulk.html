@@ -180,6 +180,7 @@ const NAMES = {
   screwBack: 'вкручивает обратно', fix: 'включает свет', kick: 'пинает ботинок', dance: 'танцует',
   stare: 'пялится на тебя', held: 'у тебя в руках', flying: 'летит', poked: 'возмущается',
   wake: 'проснулся злой', scared: 'боится темноты', read: 'читает письмо', meet: 'знакомится',
+  gaming: 'рубится в приставку', reading: 'читает (вверх ногами)', graffiti: 'рисует на стене',
   sulk: 'обиделся', hug: 'поддерживает тебя'
 };
 
@@ -508,6 +509,50 @@ const ACT = {
       return !chat.waiting && this.t > 0.5;
     }, end() { b.holdLetter = false; } };
   },
+  gaming() {
+    const dur = rand(6, 10); let say1 = false;
+    return { update() {
+      b.vx = 0; b.holdProp = 'gamepad'; b.sTarget = 0.86; b.poseT = { l: [-0.45, 0.4], r: [0.45, 0.4] };
+      const k = Math.floor(this.t * 1.5) % 7;
+      b.eyes = k === 5 ? 'angry' : 'open'; b.mouth = k === 5 ? 'wide' : 'flat'; b.lookT = { x: Math.sin(this.t * 3) * 0.3, y: 0.4 };
+      if (!say1 && this.t > 1) { say1 = true; say(pick(['ещё катку', 'да кто так играет?!', 'изи', 'лагает, бля']), 1.8); }
+      return this.t > dur;
+    } };
+  },
+  reading() {
+    const dur = rand(5, 8); let say1 = false;
+    return { update() {
+      b.vx = 0; b.holdProp = 'book'; b.poseT = { l: [-0.45, 0.35], r: [0.45, 0.35] };
+      b.eyes = 'open'; b.mouth = Math.floor(this.t) % 3 === 0 ? 'o' : 'flat'; b.lookT = { x: Math.sin(this.t) * 0.3, y: 0.6 };
+      if (!say1 && this.t > 1.5) { say1 = true; say(pick(['интересно...', 'умнею', 'хм, глубоко', 'ничё не понял']), 1.8); }
+      return this.t > dur;
+    } };
+  },
+  graffiti() {
+    const tx = rand(W * 0.12, W * 0.88); let ph = 0, p0 = 0, spray = 0;
+    const tag = { text: pick(TAG_TEXTS), x: 0, y: rand(0.25, 0.6), color: Math.floor(rand(0, TAG_COLORS.length)), tilt: rand(-12, 12) };
+    return { update(dt) {
+      if (ph === 0) {
+        if (walk(tx, dt) || this.t > 6) { ph = 1; p0 = this.t; b.vx = 0; }
+        return false;
+      }
+      b.holdProp = 'spray'; b.poseT = { l: REST.l, r: [0.9, -1.05] }; b.eyes = 'happy'; b.mouth = 'grin'; b.lookT = { x: 0, y: -1 };
+      spray -= dt;
+      if (ph === 1 && spray <= 0) {
+        spray = 0.08;
+        const sx = b.x + R * 0.7, sy = FLOOR * tag.y;
+        spawn({ type: 'spark', x: sx + rand(-1, 1) * R * 0.6, y: sy + rand(-1, 1) * R * 0.2, life: 0.5, max: 0.5 });
+      }
+      if (ph === 1 && this.t - p0 > 2) {
+        ph = 2;
+        tag.x = clamp((b.x + R * 0.7) / W, 0.08, 0.92);
+        room.tags.push(tag); if (room.tags.length > 5) room.tags.shift();
+        bump('tags'); say(pick(['искусство!', 'я художник', 'Бэнкси нервно курит']), 2);
+        try { window.webkit.messageHandlers.bulk.postMessage({ type: 'tag', text: tag.text, x: tag.x, y: tag.y, color: tag.color, tilt: tag.tilt }); } catch (_) {}
+      }
+      return ph === 2 && this.t - p0 > 3;
+    } };
+  },
   sulk() {
     let peekT = 0;
     return { update(dt) {
@@ -602,7 +647,8 @@ function brain() {
   if (lastName && lastName !== 'idle' && Math.random() < 0.45) { setAct('idle'); return; }
   const w = {
     idle: 1, wander: 3, wave: 1.2, jumpy: 1.3, sleep: 0.9, swear: 1, burp: 1.1,
-    drink: b.tipsy > 1.1 ? 0.2 : 1.1, unscrew: 1.1, kick: shoeResting() ? 1.6 : 0, dance: 1.2, stare: 0.9
+    drink: b.tipsy > 1.1 ? 0.2 : 1.1, unscrew: 1.1, kick: shoeResting() ? 1.6 : 0, dance: 1.2, stare: 0.9,
+    gaming: 0.8, reading: 0.7, graffiti: 0.4
   };
   delete w[lastName];
   let sum = 0; for (const k in w) sum += w[k];
@@ -618,6 +664,17 @@ function notifyWidget(action) {
 }
 // ---------- обида, тоска, настроение (часть приходит из приложения при запуске) ----------
 const moodBoot = window.__bulkMood || {};
+// Подарки в комнате и граффити на стене (общие с виджетом).
+const GIFT_EMOJI = { poster: '🖼️', clock: '🕰️', flag: '🏴‍☠️', tv: '📺', guitar: '🎸', cactus: '🌵', plant: '🪴', radio: '📻', teddy: '🧸', ball: '⚽', console: '🕹️', pizza: '🍕' };
+const GIFT_SPOT = { poster: [0.16, 0.42], clock: [0.86, 0.28], flag: [0.42, 0.3], tv: [0.9], guitar: [0.05], cactus: [0.8], plant: [0.25], radio: [0.7], teddy: [0.32], ball: [0.55], console: [0.95], pizza: [0.62] };
+const TAG_TEXTS = ['БУЛЬК', 'ЙОУ', 'ЛАМПА МОЯ', 'Б★', 'BULK', 'НЕ ТЫКАЙ', 'ТУТ БЫЛ БУЛЬК', 'ЗОЖ — ЛОЖЬ'];
+const TAG_COLORS = ['#f24d80', '#4dd9f2', '#99f24d', '#ffd940', '#ebebeb'];
+const room = {
+  gifts: Array.isArray(moodBoot.gifts) ? moodBoot.gifts.filter(g => GIFT_EMOJI[g]) : [],
+  tags: (Array.isArray(moodBoot.tags) ? moodBoot.tags : []).map(tg => ({
+    text: String(tg.text), x: parseFloat(tg.x), y: parseFloat(tg.y), color: parseInt(tg.color, 10) || 0, tilt: parseFloat(tg.tilt) || 0
+  }))
+};
 let sulkUntil = Number(moodBoot.offendedUntil) || 0;
 let madTimes = [];
 let dayMood = String(moodBoot.mood || '');
@@ -716,6 +773,8 @@ const ACHIEVEMENTS = [
   { id: 'remind5', icon: '✅', t: 'Ответственный', d: 'Выполнить 5 напоминаний', k: 'remindersDone', n: 5 },
   { id: 'sulk1', icon: '😤', t: 'Довёл', d: 'Обидеть Булька', k: 'sulks', n: 1 },
   { id: 'sorry1', icon: '🤝', t: 'Мир-дружба', d: 'Помириться с Бульком', k: 'forgives', n: 1 },
+  { id: 'gifts3', icon: '🎁', t: 'Новоселье', d: 'Подарить Бульку 3 вещи', k: 'gifts', n: 3 },
+  { id: 'tags5', icon: '🎨', t: 'Уличный художник', d: 'Бульк нарисовал 5 граффити', k: 'tags', n: 5 },
   { id: 'days3', icon: '📅', t: 'Три дня вместе', d: 'Заходить 3 разных дня', k: 'days', n: 3 },
   { id: 'days7', icon: '🗓️', t: 'Неделя дружбы', d: 'Заходить 7 разных дней', k: 'days', n: 7 },
   { id: 'days30', icon: '🏅', t: 'Месяц вместе', d: 'Заходить 30 разных дней', k: 'days', n: 30 }
@@ -868,6 +927,7 @@ const BULK_PERSONA = `Ты Бульк — маленький серый круг
 action выбирай по смыслу: зовут выпить — drink, говорят спать — sleep, праздник или музыка — dance, злишься — swear, приветствие — wave, выключить свет — light_off, включить — light_on. Если ничего не подходит — none.
 Если хозяин рассказал о себе что-то, что стоит запомнить надолго (имя, близкие, работа, увлечения, планы, что любит и не любит), добавь в JSON поле "remember": "короткий факт от третьего лица, например: Хозяина зовут Марк". Потом сам вспоминай эти факты к месту.
 Если хозяин рассказывает, как прошёл его день: плохое (завалил, устал, грустно, поругался) — поддержи по-дружески и добавь "mood": "support"; хорошее (сдал, получилось, праздник, повезло) — порадуйся вместе и добавь "mood": "cheer".
+Если хозяин дарит тебе вещь для комнаты, обрадуйся и добавь поле "gift": одно из poster, clock, flag, tv, guitar, cactus, plant, radio, teddy, ball, console, pizza (выбери самое похожее на подарок).
 Если хозяин говорит, что уже сделал то, о чём ты напоминал (или собирался напомнить), похвали его и добавь поле "reminder_done": "пара ключевых слов этого дела".
 Если хозяин просит напомнить о чём-то, добавь в JSON поле "reminder": {"text": "короткий текст напоминания в твоём стиле", "at": "ГГГГ-ММ-ДДTЧЧ:ММ"} — местное время, считай от текущего момента. Если время не сказали — спроси в reply и reminder не добавляй. В остальных случаях "reminder" не нужен.`;
 
@@ -986,6 +1046,11 @@ function performChat(out) {
     dayMood = out.mood;
     love(2);
     try { window.webkit.messageHandlers.bulk.postMessage({ type: 'mood', mood: out.mood, hours: 6 }); } catch (_) {}
+  }
+  if (out.gift && GIFT_EMOJI[out.gift]) {
+    if (!room.gifts.includes(out.gift)) room.gifts.push(out.gift);
+    bump('gifts'); love(3);
+    try { window.webkit.messageHandlers.bulk.postMessage({ type: 'gift', gift: out.gift }); } catch (_) {}
   }
   if (out.reminder_done) {
     bump('remindersDone'); love(3);
@@ -1254,7 +1319,7 @@ function physics(dt) {
 
 // ---------- кадр ----------
 function resetFrame() {
-  b.eyes = 'open'; b.mouth = 'flat'; b.brow = 0; b.redT = 0; b.sTarget = 1; b.jitter = 0; b.walking = false; b.back = false;
+  b.eyes = 'open'; b.mouth = 'flat'; b.brow = 0; b.redT = 0; b.sTarget = 1; b.jitter = 0; b.walking = false; b.back = false; b.holdProp = null;
   b.poseT = b.holdBulb ? BULB_POSE : REST;
   b.tiltT = b.tipsy > 0.4 ? Math.sin(T * 2.1) * 0.09 * b.tipsy : 0;
 }
@@ -1327,6 +1392,30 @@ function drawRoom(lv) {
     ctx.fillStyle = sp; ctx.beginPath(); ctx.arc(0, 0, W * 0.38, 0, Math.PI * 2); ctx.fill();
     ctx.restore();
   }
+}
+
+// Граффити на стене и подарки в комнате.
+function drawDecor(lv) {
+  const a = 0.3 + 0.7 * lv;
+  ctx.save();
+  for (const tg of room.tags) {
+    ctx.save();
+    ctx.translate(W * tg.x, FLOOR * tg.y); ctx.rotate(tg.tilt * Math.PI / 180);
+    ctx.globalAlpha = 0.7 * a;
+    ctx.fillStyle = TAG_COLORS[tg.color % TAG_COLORS.length];
+    ctx.font = italic 900 px Rubik, sans-serif; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(tg.text, 0, 0);
+    ctx.restore();
+  }
+  ctx.globalAlpha = 0.35 + 0.65 * lv;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+  for (const g of room.gifts) {
+    const s = GIFT_SPOT[g]; if (!s) continue;
+    const onWall = s.length > 1;
+    ctx.font = ${R * (onWall ? 0.75 : 0.65)}px sans-serif;
+    ctx.fillText(GIFT_EMOJI[g], W * s[0], onWall ? FLOOR * s[1] : FLOOR - 2);
+  }
+  ctx.restore();
 }
 
 function drawLamp(lv) {
@@ -1562,6 +1651,22 @@ function drawHands(rx, ry, mid, lo, lv) {
     drawBulbGlass(R * 0.3, 0.06);
     ctx.restore();
   }
+  if (b.holdProp) {
+    const mx = (pts.l.x + pts.r.x) / 2, my = (pts.l.y + pts.r.y) / 2;
+    ctx.save();
+    if (b.holdProp === 'spray') {
+      ctx.translate(pts.r.x + R * 0.05, pts.r.y - R * 0.25); ctx.rotate(0.4);
+      ctx.fillStyle = '#e64d73'; ctx.strokeStyle = '#141417'; ctx.lineWidth = 1.2;
+      roundRect(-R * 0.09, -R * 0.15, R * 0.18, R * 0.34, R * 0.05); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#bfbfbf'; ctx.fillRect(-R * 0.045, -R * 0.24, R * 0.09, R * 0.08);
+    } else {
+      ctx.translate(mx, my - R * 0.05);
+      if (b.holdProp === 'book') ctx.rotate(Math.PI);           // книжка вверх ногами
+      ctx.font = ${R * 0.55}px sans-serif; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(b.holdProp === 'book' ? '📖' : '🎮', 0, 0);
+    }
+    ctx.restore();
+  }
   if (b.holdLetter) {
     ctx.save(); ctx.translate((pts.l.x + pts.r.x) / 2, (pts.l.y + pts.r.y) / 2 - R * 0.1);
     drawLetter(R * 0.55);
@@ -1667,6 +1772,7 @@ function draw() {
   ctx.save();
   if (shakeAmt > 0) ctx.translate(rand(-1, 1) * shakeAmt, rand(-1, 1) * shakeAmt);
   drawRoom(lv);
+  drawDecor(lv);
   drawLamp(lv);
   drawShoe(lv);
   drawBlob(lv);

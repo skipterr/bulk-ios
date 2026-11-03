@@ -238,6 +238,22 @@ struct ShoeView: View {
     }
 }
 
+// Баллончик краски для граффити.
+struct SprayCanView: View {
+    var body: some View {
+        GeometryReader { g in
+            let w = g.size.width, h = g.size.height
+            ZStack {
+                RoundedRectangle(cornerRadius: w * 0.25).fill(Color(red: 0.9, green: 0.3, blue: 0.45))
+                    .overlay(RoundedRectangle(cornerRadius: w * 0.25).stroke(Color(white: 0.08), lineWidth: 1))
+                    .frame(width: w, height: h * 0.78).position(x: w / 2, y: h * 0.61)
+                RoundedRectangle(cornerRadius: 1).fill(Color(white: 0.75))
+                    .frame(width: w * 0.5, height: h * 0.2).position(x: w / 2, y: h * 0.12)
+            }
+        }
+    }
+}
+
 // Выкрученная лампочка в руках: стеклянная колба и резьбовой цоколь снизу.
 struct HeldBulbView: View {
     var body: some View {
@@ -351,6 +367,17 @@ struct BulkBody: View {
                 if holding == .bulb {
                     // лампочку держит перед собой в руках, внизу — чтобы не путалась с лицом
                     HeldBulbView().frame(width: w * 0.2, height: w * 0.28).position(x: w * 0.5, y: h * 0.8)
+                }
+                if holding == .gamepad {
+                    Text("🎮").font(.system(size: w * 0.24)).position(x: w * 0.5, y: h * 0.8)
+                }
+                if holding == .book {
+                    // книжка вверх ногами — в этом весь прикол
+                    Text("📖").font(.system(size: w * 0.26)).rotationEffect(.degrees(180)).position(x: w * 0.5, y: h * 0.74)
+                }
+                if holding == .spray {
+                    SprayCanView().frame(width: w * 0.1, height: w * 0.2).rotationEffect(.degrees(25))
+                        .position(x: rh.x + w * 0.02, y: rh.y - h * 0.08)
                 }
                 if holding == .mug {
                     MugView().frame(width: w * 0.2, height: w * 0.18).position(x: rh.x - w * 0.08, y: rh.y - h * 0.08)
@@ -532,6 +559,9 @@ extension BulkAction {
         case .sulk, .missYou: return BulkPose(x: 0.45, lift: false, tilt: 0, sx: 1.05, sy: 0.92, arms: .rest)
         case .cheer: return BulkPose(x: 0.45, lift: false, tilt: 0, sx: 1, sy: 1, arms: .up)
         case .hug: return BulkPose(x: 0.45, lift: false, tilt: 0, sx: 1, sy: 1, arms: .hold)
+        case .gaming: return BulkPose(x: 0.45, lift: false, tilt: 0, sx: 1.15, sy: 0.82, arms: .hold)
+        case .reading: return BulkPose(x: 0.45, lift: false, tilt: 0, sx: 1, sy: 1, arms: .hold)
+        case .graffiti: return BulkPose(x: 0.45, lift: false, tilt: 0, sx: 1, sy: 1, arms: .up)
         }
     }
 
@@ -540,6 +570,9 @@ extension BulkAction {
         case .drink: return .bottle
         case .inDark: return .bulb
         case .coffee: return .mug
+        case .gaming: return .gamepad
+        case .reading: return .book
+        case .graffiti: return .spray
         default: return .none
         }
     }
@@ -568,6 +601,7 @@ extension BulkAction {
         case .yawn, .lookAround, .sitDown, .coffee, .fly: return 3
         case .sulk, .missYou, .hug: return 3
         case .cheer: return 1
+        case .gaming, .reading, .graffiti: return 3
         }
     }
 
@@ -625,6 +659,10 @@ extension BulkAction {
             f.look = s
         case .sulk, .missYou, .hug:
             f.sy = 1 + 0.02 * s
+        case .gaming:
+            f.look = 0.3 * s
+        case .reading, .graffiti:
+            f.sy = 1 + 0.02 * s
         case .cheer:
             f.dy = -6 * abs(s)
             f.arms = odd ? .up : .wave
@@ -653,6 +691,9 @@ struct BulkScene: View {
     let frame: BulkFrame
     let phrase: String
     let tipsy: Double
+    /// Подарки в комнате и граффити на стене.
+    var gifts: [String] = []
+    var tags: [WallTag] = []
     /// Время кадра в секундах — от него качается лампа и подрагивает кроссовок.
     var clock: Double = 0
     /// Ближайший план («🔔 18:00 — тренировка»), пусто — планов нет.
@@ -674,6 +715,11 @@ struct BulkScene: View {
             content(w: geo.size.width, h: geo.size.height)
         }
     }
+
+    static let tagColors: [Color] = [
+        Color(red: 0.95, green: 0.3, blue: 0.5), Color(red: 0.3, green: 0.85, blue: 0.95), Color(red: 0.6, green: 0.95, blue: 0.3),
+        Color(red: 1, green: 0.85, blue: 0.25), Color(white: 0.92)
+    ]
 
     private var drunkLook: Bool { tipsy > 0.4 && [.chill, .stare, .wave].contains(action) }
 
@@ -701,6 +747,24 @@ struct BulkScene: View {
                 .rotationEffect(.degrees(frame.shoeAir > 0 ? -25 : (shoeHop ? -12 : 0)), anchor: .bottomTrailing)
                 .position(x: w * CGFloat(frame.shoeX),
                           y: floorY - 8.5 - h * 0.5 * CGFloat(frame.shoeAir) - (shoeHop ? 7 : 0))
+
+            // граффити на стене
+            ForEach(Array(tags.enumerated()), id: \.offset) { _, tag in
+                Text(tag.text)
+                    .font(.system(size: 13, weight: .black, design: .rounded)).italic()
+                    .foregroundStyle(Self.tagColors[tag.color % Self.tagColors.count].opacity(lightOn ? 0.7 : 0.22))
+                    .rotationEffect(.degrees(tag.tilt))
+                    .fixedSize()
+                    .position(x: w * CGFloat(tag.x), y: floorY * CGFloat(tag.y))
+            }
+            // подарки: на стене висят, на полу стоят
+            ForEach(gifts, id: \.self) { gift in
+                if let e = Gifts.emoji[gift], let spot = Gifts.spot[gift] {
+                    Text(e).font(.system(size: spot.wall == nil ? 15 : 16))
+                        .opacity(lightOn ? 1 : 0.35)
+                        .position(x: w * CGFloat(spot.x), y: spot.wall.map { floorY * CGFloat($0) } ?? floorY - 9)
+                }
+            }
 
             Ellipse().fill(Color.black.opacity(0.45 - 0.3 * Double(lift)))
                 .frame(width: bodyW * (1 - 0.4 * lift), height: 5)

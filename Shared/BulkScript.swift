@@ -14,6 +14,7 @@ struct BulkFrame {
     var shoeAir: Double = 0       // 0 — ботинок на полу, больше — в полёте
     var flyX: Double? = nil       // муха (доли ширины и высоты комнаты), nil — мухи нет
     var flyY: Double = 0.4
+    var newTag: WallTag? = nil    // на этом кадре на стене появляется граффити
 }
 
 enum BulkScript {
@@ -173,6 +174,36 @@ enum BulkScript {
             add(FramePose(sx: 1.15, sy: 0.82, eyes: .closed, mouth: .o))
             add(FramePose(mouth: .frown))
             add()
+        case .gaming:
+            // залип в приставку: сидит, иногда психует или радуется победе
+            for i in 0..<Int.random(in: 6...8) {
+                let r = Double.random(in: 0...1)
+                if r < 0.15 {
+                    add(FramePose(dy: -6, sx: 1.1, sy: 0.86, eyes: .happy, mouth: .grin, arms: .hold), holding: .gamepad)
+                } else if r < 0.3 {
+                    add(FramePose(dx: i % 2 == 0 ? 2 : -2, sx: 1.15, sy: 0.82, eyes: .angry, mouth: .wide, arms: .hold), holding: .gamepad)
+                } else {
+                    add(FramePose(tilt: rnd(-4...4), sx: 1.15, sy: 0.82, eyes: .open, mouth: .flat, arms: .hold, look: rnd(-0.3...0.3)),
+                        holding: .gamepad)
+                }
+            }
+        case .reading:
+            // читает книжку вверх ногами с умным видом
+            for i in 0..<Int.random(in: 5...7) {
+                add(FramePose(tilt: i % 3 == 2 ? 6 : 0, eyes: i % 4 == 3 ? Eyes.closed : Eyes.open,
+                              mouth: i % 2 == 0 ? Mouth.o : Mouth.flat, arms: .hold, look: rnd(-0.4...0.4)), holding: .book)
+            }
+        case .graffiti:
+            // подходит к стене и рисует тег баллончиком — тег остаётся на стене
+            let tag = WallTag.random(at: .now)
+            walk(to: min(0.9, max(0.1, tag.x)))
+            for i in 0..<3 {
+                add(FramePose(tilt: i % 2 == 0 ? 6 : -6, sy: 1.08, eyes: .happy, mouth: .grin, arms: .up), holding: .spray)
+            }
+            var done = BulkFrame(action: action, x: x, pose: FramePose(eyes: .happy, mouth: .grin), light: light, shoeX: shoe)
+            done.newTag = tag
+            out.append(done)
+            add(FramePose(dy: -5, eyes: .happy, mouth: .grin, arms: .wave))
         case .sulk:
             // сидит спиной, иногда косится через плечо и снова отворачивается
             for i in 0..<Int.random(in: 5...8) {

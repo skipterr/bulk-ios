@@ -50,7 +50,11 @@ struct BulkWebView: UIViewRepresentable {
         // и настроение Булька: обижен ли, давно ли ты заходил, празднует/поддерживает ли
         var s = BulkStore.load()
         let now = Date()
-        let mood = "{\"offendedUntil\":\(Int(s.offendedUntil.timeIntervalSince1970 * 1000)),\"awayHours\":\(Int(now.timeIntervalSince(s.lastVisit) / 3600)),\"mood\":\(jsString(s.moodNow(at: now)))}"
+        // подарки и граффити — чтобы в комнате приложения было то же, что на виджете
+        let gifts = (try? JSONEncoder().encode(s.gifts)).flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
+        let tags = (try? JSONEncoder().encode(s.tags.map { ["text": $0.text, "x": String($0.x), "y": String($0.y), "color": String($0.color), "tilt": String($0.tilt)] }))
+            .flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
+        let mood = "{\"offendedUntil\":\(Int(s.offendedUntil.timeIntervalSince1970 * 1000)),\"awayHours\":\(Int(now.timeIntervalSince(s.lastVisit) / 3600)),\"mood\":\(jsString(s.moodNow(at: now))),\"gifts\":\(gifts),\"tags\":\(tags)}"
         s.lastVisit = now
         BulkStore.save(s, writer: "app")
         WidgetCenter.shared.reloadAllTimelines()
@@ -107,6 +111,24 @@ struct BulkWebView: UIViewRepresentable {
                     s.mood = mood
                     s.moodUntil = Date().addingTimeInterval(hours * 3600)
                     s.set(mood == "cheer" ? .cheer : .hug, at: Date(), byUser: true)
+                    BulkStore.save(s, writer: "app")
+                    WidgetCenter.shared.reloadAllTimelines()
+                case "gift":
+                    // подарок из чата навсегда появляется в комнате
+                    guard let gift = dict["gift"] as? String, Gifts.all.contains(gift) else { return }
+                    var s = BulkStore.load()
+                    if !s.gifts.contains(gift) { s.gifts.append(gift) }
+                    s.set(.cheer, at: Date(), byUser: true)
+                    s.phrase = "спасибо за подарок!"
+                    BulkStore.save(s, writer: "app")
+                    WidgetCenter.shared.reloadAllTimelines()
+                case "tag":
+                    // граффити, нарисованное в приложении, появляется и на виджете
+                    guard let text = dict["text"] as? String else { return }
+                    var s = BulkStore.load()
+                    s.tags.append(WallTag(text: text, x: (dict["x"] as? Double) ?? 0.5, y: (dict["y"] as? Double) ?? 0.4,
+                                          color: (dict["color"] as? Int) ?? 0, tilt: (dict["tilt"] as? Double) ?? 0, createdAt: Date()))
+                    if s.tags.count > 5 { s.tags.removeFirst(s.tags.count - 5) }
                     BulkStore.save(s, writer: "app")
                     WidgetCenter.shared.reloadAllTimelines()
                 case "remind":

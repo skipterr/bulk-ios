@@ -8,6 +8,8 @@ struct BulkEntry: TimelineEntry {
     let phrase: String
     let tipsy: Double
     var upcoming = ""        // строчка внизу: ближайший план
+    var gifts: [String] = []
+    var tags: [WallTag] = []
 }
 
 struct BulkProvider: TimelineProvider {
@@ -62,6 +64,12 @@ struct BulkProvider: TimelineProvider {
                 plays += 1
                 let frames = BulkScript.frames(for: action, x: x, shoeX: shoe, light: light)
                 for (i, f) in frames.enumerated() {
+                    // Бульк дорисовал граффити — тег остаётся на стене (не больше 5, старые закрашиваются)
+                    if var tag = f.newTag {
+                        tag.createdAt = t
+                        s.tags.append(tag)
+                        if s.tags.count > 5 { s.tags.removeFirst(s.tags.count - 5) }
+                    }
                     // пришло время напоминания — Бульк держит табличку 🔔;
                     // за полчаса до — сам напоминает в облачке «через N мин»
                     let next = s.nextReminder(after: t)
@@ -71,7 +79,8 @@ struct BulkProvider: TimelineProvider {
                     }
                     let shown = s.reminder(at: t).map { "🔔 " + $0.text } ?? soon ?? (i < 2 ? phrase : "")
                     let upcoming = next.map { "🔔 " + Self.clock.string(from: $0.at) + " — " + $0.text } ?? ""
-                    entries.append(BulkEntry(date: t, frame: f, phrase: shown, tipsy: tipsy, upcoming: upcoming))
+                    entries.append(BulkEntry(date: t, frame: f, phrase: shown, tipsy: tipsy, upcoming: upcoming,
+                                             gifts: s.gifts, tags: s.tags.filter { $0.createdAt <= t }))
                     t = t.addingTimeInterval(frameStep)
                 }
                 if let last = frames.last {
@@ -104,8 +113,8 @@ struct BulkWidgetView: View {
 
     // Без кнопок: на виджете Бульк просто живёт. Тап открывает приложение.
     var body: some View {
-        BulkScene(frame: entry.frame, phrase: entry.phrase, tipsy: entry.tipsy, clock: entry.date.timeIntervalSince1970,
-                  upcoming: entry.upcoming)
+        BulkScene(frame: entry.frame, phrase: entry.phrase, tipsy: entry.tipsy, gifts: entry.gifts, tags: entry.tags,
+                  clock: entry.date.timeIntervalSince1970, upcoming: entry.upcoming)
             .animation(.spring(duration: 0.7, bounce: 0.25), value: entry.date)
     }
 }
