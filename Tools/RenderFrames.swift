@@ -73,6 +73,17 @@ struct RenderFrames {
         }
         print("frames:", BulkAction.allCases.count * 10)
 
+        // превью виджета: граффити всех цветов на стене
+        let tags = WallTag.texts.prefix(5).enumerated().map { i, t in
+            WallTag(text: t, x: [0.2, 0.5, 0.82, 0.3, 0.62][i], y: [0.3, 0.22, 0.35, 0.62, 0.55][i],
+                    color: i, tilt: [-8, 5, -4, 7, -10][i], createdAt: .now)
+        }
+        let scene = BulkScene(frame: BulkFrame(action: .graffiti, x: 0.42, pose: FramePose(arms: .wave), light: true, shoeX: 0.9),
+                              phrase: "йоу", tipsy: 0, gifts: ["poster", "cactus"], tags: tags)
+            .frame(width: 364, height: 170)
+            .scaleEffect(3, anchor: .topLeading)
+        try png(scene, width: 1092, height: 510).write(to: out.appendingPathComponent("widget.png"))
+
         if args.count > 2 {
             let iconURL = URL(fileURLWithPath: args[2])
             try FileManager.default.createDirectory(at: iconURL.deletingLastPathComponent(), withIntermediateDirectories: true)

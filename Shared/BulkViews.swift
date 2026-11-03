@@ -687,6 +687,69 @@ struct FramePose {
     var back: Bool? = nil
 }
 
+/// Граффити-тег как из баллончика: ореол распылённой краски, объёмная тень, тёмный контур,
+/// заливка градиентом, наклонённые буквы и подтёки. Так же рисует приложение (drawTag в bulk.html).
+struct GraffitiTag: View {
+    let tag: WallTag
+    var dim = false     // свет выключен — краска еле видна
+
+    // пары цветов: верх букв посветлее, низ — насыщеннее
+    static let colors: [(Color, Color)] = [
+        (Color(red: 1, green: 0.55, blue: 0.7), Color(red: 0.9, green: 0.15, blue: 0.43)),
+        (Color(red: 0.55, green: 0.95, blue: 1), Color(red: 0.1, green: 0.6, blue: 0.9)),
+        (Color(red: 0.8, green: 1, blue: 0.45), Color(red: 0.35, green: 0.8, blue: 0.15)),
+        (Color(red: 1, green: 0.95, blue: 0.5), Color(red: 1, green: 0.6, blue: 0.1)),
+        (Color(white: 1), Color(red: 0.7, green: 0.72, blue: 0.8))
+    ]
+
+    static let size: CGFloat = 17
+    private let ink = Color(white: 0.06)
+
+    /// Подтёки: где (доля ширины) и какой длины — зависят только от текста, чтобы не прыгали между кадрами.
+    static func drips(_ text: String) -> [(x: CGFloat, len: CGFloat)] {
+        var h: UInt32 = 0
+        for u in text.unicodeScalars { h = h &* 31 &+ u.value }
+        return (0..<3).map { i in
+            (0.12 + 0.76 * CGFloat((h >> UInt32(i * 5)) % 32) / 31,
+             size * (0.25 + 0.5 * CGFloat((h >> UInt32(i * 7 + 3)) % 16) / 15))
+        }
+    }
+
+    var body: some View {
+        let pair = Self.colors[abs(tag.color) % Self.colors.count]
+        let word = Text(tag.text.uppercased())
+            .font(.system(size: Self.size, weight: .black, design: .rounded))
+            .tracking(-0.5)
+        let s = Self.size
+        ZStack {
+            // краска распылилась вокруг букв
+            word.foregroundStyle(pair.0.opacity(0.5)).blur(radius: 4)
+            // объёмная тень
+            word.foregroundStyle(ink).offset(x: s * 0.12, y: s * 0.12)
+            // контур
+            ForEach(0..<8, id: \.self) { i in
+                let a = CGFloat(i) * .pi / 4
+                word.foregroundStyle(ink).offset(x: cos(a) * s * 0.09, y: sin(a) * s * 0.09)
+            }
+            word.foregroundStyle(LinearGradient(colors: [pair.0, pair.1], startPoint: .top, endPoint: .bottom))
+        }
+        .fixedSize()
+        .background {
+            GeometryReader { g in
+                ForEach(Array(Self.drips(tag.text).enumerated()), id: \.offset) { _, d in
+                    Capsule().fill(pair.1)
+                        .overlay(Capsule().stroke(ink, lineWidth: 1))
+                        .frame(width: s * 0.13, height: d.len)
+                        .position(x: g.size.width * d.x, y: g.size.height * 0.72 + d.len / 2)
+                }
+            }
+        }
+        .transformEffect(CGAffineTransform(a: 1, b: 0, c: -0.18, d: 1, tx: 0, ty: 0))
+        .rotationEffect(.degrees(tag.tilt))
+        .opacity(dim ? 0.25 : 0.95)
+    }
+}
+
 struct BulkScene: View {
     let frame: BulkFrame
     let phrase: String
@@ -715,11 +778,6 @@ struct BulkScene: View {
             content(w: geo.size.width, h: geo.size.height)
         }
     }
-
-    static let tagColors: [Color] = [
-        Color(red: 0.95, green: 0.3, blue: 0.5), Color(red: 0.3, green: 0.85, blue: 0.95), Color(red: 0.6, green: 0.95, blue: 0.3),
-        Color(red: 1, green: 0.85, blue: 0.25), Color(white: 0.92)
-    ]
 
     private var drunkLook: Bool { tipsy > 0.4 && [.chill, .stare, .wave].contains(action) }
 
@@ -750,11 +808,7 @@ struct BulkScene: View {
 
             // граффити на стене
             ForEach(Array(tags.enumerated()), id: \.offset) { _, tag in
-                Text(tag.text)
-                    .font(.system(size: 13, weight: .black, design: .rounded)).italic()
-                    .foregroundStyle(Self.tagColors[tag.color % Self.tagColors.count].opacity(lightOn ? 0.7 : 0.22))
-                    .rotationEffect(.degrees(tag.tilt))
-                    .fixedSize()
+                GraffitiTag(tag: tag, dim: !lightOn)
                     .position(x: w * CGFloat(tag.x), y: floorY * CGFloat(tag.y))
             }
             // подарки: на стене висят, на полу стоят

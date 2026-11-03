@@ -194,15 +194,12 @@ enum BulkScript {
                               mouth: i % 2 == 0 ? Mouth.o : Mouth.flat, arms: .hold, look: rnd(-0.4...0.4)), holding: .book)
             }
         case .graffiti:
-            // подходит к стене и рисует тег баллончиком — тег остаётся на стене
-            let tag = WallTag.random(at: .now)
-            walk(to: min(0.9, max(0.1, tag.x)))
+            // подходит к стене и подновляет граффити баллончиком. Сам новые не рисует и старые не стирает —
+            // стена меняется только по просьбе хозяина из приложения.
+            walk(to: Double.random(in: 0.15...0.85))
             for i in 0..<3 {
                 add(FramePose(tilt: i % 2 == 0 ? 6 : -6, sy: 1.08, eyes: .happy, mouth: .grin, arms: .up), holding: .spray)
             }
-            var done = BulkFrame(action: action, x: x, pose: FramePose(eyes: .happy, mouth: .grin), light: light, shoeX: shoe)
-            done.newTag = tag
-            out.append(done)
             add(FramePose(dy: -5, eyes: .happy, mouth: .grin, arms: .wave))
         case .sulk:
             // сидит спиной, иногда косится через плечо и снова отворачивается

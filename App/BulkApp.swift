@@ -141,6 +141,13 @@ struct BulkWebView: UIViewRepresentable {
                     if s.tags.count > 5 { s.tags.removeFirst(s.tags.count - 5) }
                     BulkStore.save(s, writer: "app")
                     WidgetCenter.shared.reloadAllTimelines()
+                case "untag":
+                    // Бульк оттёр граффити губкой — и с виджета оно пропадает
+                    guard let text = dict["text"] as? String else { return }
+                    var s = BulkStore.load()
+                    if let i = s.tags.firstIndex(where: { $0.text == text }) { s.tags.remove(at: i) }
+                    BulkStore.save(s, writer: "app")
+                    WidgetCenter.shared.reloadAllTimelines()
                 case "remind":
                     if let text = dict["text"] as? String, let at = dict["at"] as? String {
                         Reminders.add(text: text, at: at)

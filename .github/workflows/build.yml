@@ -24,6 +24,7 @@ jobs:
         with:
           name: frames-preview
           path: |
+            frames/widget.png
             frames/chill_0.png
             frames/dance_3.png
             frames/sleep_0.png

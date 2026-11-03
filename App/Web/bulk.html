@@ -180,7 +180,7 @@ const NAMES = {
   screwBack: 'вкручивает обратно', fix: 'включает свет', kick: 'пинает ботинок', dance: 'танцует',
   stare: 'пялится на тебя', held: 'у тебя в руках', flying: 'летит', poked: 'возмущается',
   wake: 'проснулся злой', scared: 'боится темноты', read: 'читает письмо', meet: 'знакомится',
-  gaming: 'рубится в приставку', reading: 'читает (вверх ногами)', graffiti: 'рисует на стене',
+  gaming: 'рубится в приставку', reading: 'читает (вверх ногами)', graffiti: 'рисует на стене', erase: 'отмывает стену',
   sulk: 'обиделся', hug: 'поддерживает тебя'
 };
 
@@ -269,9 +269,9 @@ function walk(tx, dt) {
 
 // ---------- действия ----------
 let act = null, lastName = '';
-function setAct(name) {
+function setAct(name, arg) {
   if (act && act.end) act.end();
-  act = ACT[name]();
+  act = ACT[name](arg);
   act.name = name; act.t = 0;
   if (!['poked', 'held', 'flying', 'wake', 'scared', 'read', 'meet'].includes(name)) lastName = name;
   const n = NAMES[name] || name;
@@ -528,30 +528,101 @@ const ACT = {
       return this.t > dur;
     } };
   },
-  graffiti() {
-    const tx = rand(W * 0.12, W * 0.88); let ph = 0, p0 = 0, spray = 0;
-    const tag = { text: pick(TAG_TEXTS), x: 0, y: rand(0.25, 0.6), color: Math.floor(rand(0, TAG_COLORS.length)), tilt: rand(-12, 12) };
+  // С текстом — хозяин попросил: Бульк пишет его на стене прямо на глазах, буква за буквой.
+  // Без текста — хобби: подходит к своему граффити и подновляет его (стена от этого не меняется).
+  graffiti(text) {
+    const live = !!text;
+    let tag = null, tw = 0, cx = 0, ph = 0, p0 = 0, pw = 0, spray = 0;
+    if (live) {
+      tag = { text: String(text).toUpperCase().slice(0, 16), x: 0, y: rand(0.25, 0.55), color: Math.floor(rand(0, TAG_FILL.length)), tilt: rand(-8, 8), reveal: 0 };
+      tw = tagWidth(tag.text);
+      cx = tw > W * 0.8 ? W / 2 : clamp(rand(W * 0.25, W * 0.75), tw / 2 + R * 0.4, W - tw / 2 - R * 0.4);
+      tag.x = cx / W;
+    } else if (room.tags.length) {
+      tag = pick(room.tags); tw = tagWidth(tag.text); cx = W * tag.x;
+    } else {
+      cx = rand(W * 0.2, W * 0.8);
+    }
+    const tagY = () => FLOOR * (tag ? tag.y : 0.4);
+    const sprayAt = sx => {
+      spray = 0.06;
+      spawn({ type: 'spark', x: sx + rand(-1, 1) * R * 0.25, y: tagY() + rand(-1, 1) * R * 0.25, life: 0.5, max: 0.5,
+              color: TAG_FILL[tag ? tag.color % TAG_FILL.length : 0][0] });
+    };
     return { update(dt) {
       if (ph === 0) {
-        if (walk(tx, dt) || this.t > 6) { ph = 1; p0 = this.t; b.vx = 0; }
+        // встаёт к левому краю надписи
+        if (walk(clamp(cx - tw / 2 - R * 0.7, R, W - R), dt) || this.t > 6) {
+          ph = 1; p0 = this.t; b.vx = 0;
+          if (live) { room.tags.push(tag); say(pick(['щас нарисую', 'смотри и учись', 'момент...']), 1.5); }
+        }
         return false;
       }
-      b.holdProp = 'spray'; b.poseT = { l: REST.l, r: [0.9, -1.05] }; b.eyes = 'happy'; b.mouth = 'grin'; b.lookT = { x: 0, y: -1 };
+      b.holdProp = 'spray'; b.poseT = { l: REST.l, r: [0.9, -1.05] }; b.eyes = 'happy'; b.mouth = 'grin'; b.lookT = { x: 0.4, y: -1 };
       spray -= dt;
-      if (ph === 1 && spray <= 0) {
-        spray = 0.08;
-        const sx = b.x + R * 0.7, sy = FLOOR * tag.y;
-        spawn({ type: 'spark', x: sx + rand(-1, 1) * R * 0.6, y: sy + rand(-1, 1) * R * 0.2, life: 0.5, max: 0.5 });
+      const k = this.t - p0;
+      if (live && ph === 1) {
+        // баллончик ведёт по стене, за ним проявляются буквы
+        tag.reveal = Math.min(1, k / clamp(tag.text.length * 0.35, 1.5, 5));
+        const sx = cx - tw / 2 + tw * tag.reveal;
+        if (walk(clamp(sx - R * 0.7, R, W - R), dt)) b.vx = 0;
+        b.walking = false;
+        if (spray <= 0) sprayAt(sx);
+        if (tag.reveal >= 1) {
+          ph = 2; p0 = this.t; delete tag.reveal;
+          if (room.tags.length > 5) room.tags.shift();
+          bump('tags'); say(pick(['искусство!', 'я художник', 'Бэнкси нервно курит']), 2);
+          try { window.webkit.messageHandlers.bulk.postMessage({ type: 'tag', text: tag.text, x: tag.x, y: tag.y, color: tag.color, tilt: tag.tilt }); } catch (_) {}
+        }
+        return false;
       }
-      if (ph === 1 && this.t - p0 > 2) {
-        ph = 2;
-        tag.x = clamp((b.x + R * 0.7) / W, 0.08, 0.92);
-        room.tags.push(tag); if (room.tags.length > 5) room.tags.shift();
-        bump('tags'); say(pick(['искусство!', 'я художник', 'Бэнкси нервно курит']), 2);
-        try { window.webkit.messageHandlers.bulk.postMessage({ type: 'tag', text: tag.text, x: tag.x, y: tag.y, color: tag.color, tilt: tag.tilt }); } catch (_) {}
+      if (!live && ph === 1) {
+        if (spray <= 0) sprayAt(cx + Math.sin(k * 3) * tw * 0.4);
+        if (k > 2.5) { ph = 2; p0 = this.t; say(pick(['подновил', 'красота', 'шедевр']), 1.6); }
+        return false;
       }
-      return ph === 2 && this.t - p0 > 3;
+      return this.t - p0 > 1.5;
+    }, end() {
+      // не дорисовал — недописанное не оставляем
+      if (live && tag.reveal !== undefined) room.tags = room.tags.filter(t => t !== tag);
     } };
+  },
+  // Губкой оттирает граффити: одно (по тексту) или все по очереди.
+  erase(which) {
+    const q = String(which || '').toUpperCase().trim();
+    const queue = room.tags.filter(tg => !q || tg.text.includes(q) || q.includes(tg.text));
+    if (!queue.length) say(q ? 'такого на стене нет' : 'стена и так чистая', 2);
+    let cur = null, ph = 0, p0 = 0, foam = 0;
+    return { update(dt) {
+      if (!cur) {
+        cur = queue.shift();
+        if (!cur) return this.t > 1.5;
+        ph = 0; p0 = this.t;
+      }
+      const tw = tagWidth(cur.text), cx = W * cur.x;
+      b.holdProp = 'sponge';
+      if (ph === 0) {
+        if (walk(clamp(cx - R * 0.7, R, W - R), dt) || this.t - p0 > 6) { ph = 1; p0 = this.t; b.vx = 0; }
+        return false;
+      }
+      // трёт: рука с губкой ходит кругами, краска бледнеет, летит пена
+      const k = this.t - p0;
+      b.poseT = { l: REST.l, r: [0.9 + Math.sin(k * 14) * 0.25, -1 + Math.cos(k * 14) * 0.2] };
+      b.eyes = 'open'; b.mouth = k % 1.2 < 0.6 ? 'flat' : 'o'; b.lookT = { x: 0.4, y: -1 };
+      cur.fade = Math.max(0, 1 - k / 2.2);
+      foam -= dt;
+      if (foam <= 0) {
+        foam = 0.1;
+        spawn({ type: 'spark', x: cx + rand(-0.5, 0.5) * tw, y: FLOOR * cur.y + rand(-1, 1) * R * 0.2, vy: R * 0.8, life: 0.6, max: 0.6, color: '#e6f2ff' });
+      }
+      if (cur.fade <= 0) {
+        const gone = cur; cur = null;
+        room.tags = room.tags.filter(t => t !== gone);
+        try { window.webkit.messageHandlers.bulk.postMessage({ type: 'untag', text: gone.text }); } catch (_) {}
+        if (!queue.length) say(pick(['чисто!', 'как новая', 'всё, отмыл']), 2);
+      }
+      return false;
+    }, end() { if (cur) delete cur.fade; } };
   },
   sulk() {
     let peekT = 0;
@@ -648,7 +719,7 @@ function brain() {
   const w = {
     idle: 1, wander: 3, wave: 1.2, jumpy: 1.3, sleep: 0.9, swear: 1, burp: 1.1,
     drink: b.tipsy > 1.1 ? 0.2 : 1.1, unscrew: 1.1, kick: shoeResting() ? 1.6 : 0, dance: 1.2, stare: 0.9,
-    gaming: 0.8, reading: 0.7, graffiti: 0.4
+    gaming: 0.8, reading: 0.7, graffiti: room.tags.length ? 0.4 : 0
   };
   delete w[lastName];
   let sum = 0; for (const k in w) sum += w[k];
@@ -667,8 +738,6 @@ const moodBoot = window.__bulkMood || {};
 // Подарки в комнате и граффити на стене (общие с виджетом).
 const GIFT_EMOJI = { poster: '🖼️', clock: '🕰️', flag: '🏴‍☠️', tv: '📺', guitar: '🎸', cactus: '🌵', plant: '🪴', radio: '📻', teddy: '🧸', ball: '⚽', console: '🕹️', pizza: '🍕' };
 const GIFT_SPOT = { poster: [0.16, 0.42], clock: [0.86, 0.28], flag: [0.42, 0.3], tv: [0.9], guitar: [0.05], cactus: [0.8], plant: [0.25], radio: [0.7], teddy: [0.32], ball: [0.55], console: [0.95], pizza: [0.62] };
-const TAG_TEXTS = ['БУЛЬК', 'ЙОУ', 'ЛАМПА МОЯ', 'Б★', 'BULK', 'НЕ ТЫКАЙ', 'ТУТ БЫЛ БУЛЬК', 'ЗОЖ — ЛОЖЬ'];
-const TAG_COLORS = ['#f24d80', '#4dd9f2', '#99f24d', '#ffd940', '#ebebeb'];
 const room = {
   gifts: Array.isArray(moodBoot.gifts) ? moodBoot.gifts.filter(g => GIFT_EMOJI[g]) : [],
   tags: (Array.isArray(moodBoot.tags) ? moodBoot.tags : []).map(tg => ({
@@ -930,6 +999,7 @@ action выбирай по смыслу: зовут выпить — drink, го
 Если хозяин рассказал о себе что-то, что стоит запомнить надолго (имя, близкие, работа, увлечения, планы, что любит и не любит), добавь в JSON поле "remember": "короткий факт от третьего лица, например: Хозяина зовут Марк". Потом сам вспоминай эти факты к месту.
 Если хозяин рассказывает, как прошёл его день: плохое (завалил, устал, грустно, поругался) — поддержи по-дружески и добавь "mood": "support"; хорошее (сдал, получилось, праздник, повезло) — порадуйся вместе и добавь "mood": "cheer".
 Если хозяин дарит тебе вещь для комнаты, обрадуйся и добавь поле "gift": одно из poster, clock, flag, tv, guitar, cactus, plant, radio, teddy, ball, console, pizza (выбери самое похожее на подарок).
+Если хозяин просит нарисовать или написать что-то на стене — добавь "draw": "текст граффити, до 16 символов". Если просит стереть или убрать граффити — добавь "erase": "all" (всё) или текст того граффити, которое стереть. Сам без просьбы стену не трогай.
 Если хозяин говорит, что уже сделал то, о чём ты напоминал (или собирался напомнить), похвали его и добавь поле "reminder_done": "пара ключевых слов этого дела".
 Если хозяин просит напомнить о чём-то, добавь в JSON поле "reminder": {"text": "короткий текст напоминания в твоём стиле", "at": "ГГГГ-ММ-ДДTЧЧ:ММ"} — местное время, считай от текущего момента. Если время не сказали — спроси в reply и reminder не добавляй. В остальных случаях "reminder" не нужен.`;
 
@@ -974,6 +1044,7 @@ async function askGemini(text) {
     systemInstruction: { parts: [{ text: BULK_PERSONA + '\nСейчас: ' + nowForPrompt() + '.' +
       (sulking() ? '\nСейчас ты ОБИЖЕН на хозяина: он задолбал тебя тычками. Отвечай обиженно и коротко, через губу. Если он искренне извиняется — прости его и добавь в JSON \"forgive\": true.' : '') +
       '\nКак ты сейчас относишься к хозяину: ' + loveLabel() + '.' +
+      '\nНа стене сейчас граффити: ' + (room.tags.length ? room.tags.map(t => t.text).join(', ') : 'ничего') + '.' +
       (chat.facts.length ? '\nЧто ты знаешь о хозяине:\n- ' + chat.facts.join('\n- ') : '') }] },
     contents: chat.history,
     generationConfig: { responseMimeType: 'application/json', temperature: 1, maxOutputTokens: 1024 }
@@ -1077,7 +1148,34 @@ function performChat(out) {
     setAct(out.mood === 'cheer' ? 'dance' : 'hug');
   }
   if (out.forgive && !sulking() && act && act.name === 'sulk') setAct('wave');
+  if (out.draw) doWall({ draw: String(out.draw) });
+  else if (out.erase) doWall({ erase: out.erase === 'all' ? '' : String(out.erase) });
   say(reply, clamp(2.5 + reply.length * 0.06, 3.5, 10), true);
+}
+
+// Стена: рисует и стирает только по твоей просьбе. Простые команды понимает и без Gemini:
+// «нарисуй ЙОУ», «напиши на стене …», «сотри», «убери граффити», «сотри ЗОЖ».
+const WALL_FILLER = new Set(['со', 'с', 'на', 'стены', 'стену', 'стене', 'стена', 'все', 'всё', 'граффити', 'надпись', 'надписи',
+  'тег', 'теги', 'рисунок', 'рисунки', 'пожалуйста', 'плиз', 'это', 'эту', 'этот', 'эти']);
+function wallCommand(text) {
+  const t = text.trim().replace(/^бульк[,!\s]+/i, '');
+  let m = /^(?:нарисуй|намалюй|набрызгай|напиши на стене)\s+(?:на\s+стене\s+)?(.+)$/i.exec(t);
+  if (m) { const s = m[1].replace(/["«»“”']/g, '').trim(); return s ? { draw: s } : null; }
+  m = /^(?:сотри|стери|убери|смой|отмой|закрась)(?:\s+(.*))?$/i.exec(t);
+  if (!m) return null;
+  const words = (m[1] || '').replace(/["«»“”'.!,]/g, ' ').split(/\s+/).filter(Boolean);
+  const rest = words.filter(w => !WALL_FILLER.has(w.toLowerCase())).join(' ');
+  if (!rest) return { erase: '' };
+  const q = rest.toUpperCase();
+  if (room.tags.some(tg => tg.text.includes(q) || q.includes(tg.text))) return { erase: rest };
+  // «убери ботинок» — это не про стену, пусть разбирается Gemini
+  return words.length > rest.split(' ').length ? { erase: rest } : null;
+}
+function doWall(w) {
+  if (sulking()) { say(pick(['сам рисуй', 'не, я обижен']), 2); return; }
+  if (!free()) { say('погоди, я занят', 1.5); return; }
+  if (w.draw) { setAct('graffiti', w.draw); notifyWidget('graffiti'); }
+  else setAct('erase', w.erase);
 }
 
 chatForm.addEventListener('submit', async (e) => {
@@ -1090,6 +1188,12 @@ chatForm.addEventListener('submit', async (e) => {
     chatInput.blur();
     onboard.step = -1;
     nextOnboard();
+    return;
+  }
+  const wall = wallCommand(text);
+  if (wall) {
+    chatInput.blur(); sendLetter();
+    setTimeout(() => doWall(wall), 800);
     return;
   }
   // ключи Gemini бывают старого вида (AIza…) и нового (AQ.…)
@@ -1397,18 +1501,61 @@ function drawRoom(lv) {
 }
 
 // Граффити на стене и подарки в комнате.
+// Граффити как из баллончика: ореол краски, объёмная тень, контур, подтёки, заливка градиентом.
+// Так же рисует виджет (GraffitiTag в BulkViews.swift).
+const TAG_FILL = [['#ff8cb3', '#e6266e'], ['#8cf2ff', '#1a99e6'], ['#ccff73', '#59cc26'], ['#fff280', '#ff9919'], ['#ffffff', '#b3b8cc']];
+function tagDrips(text, size) {
+  let h = 0;
+  for (const ch of text) h = (Math.imul(h, 31) + ch.codePointAt(0)) >>> 0;
+  return [0, 1, 2].map(i => ({
+    x: 0.12 + 0.76 * ((h >>> (i * 5)) % 32) / 31,
+    len: size * (0.25 + 0.5 * ((h >>> (i * 7 + 3)) % 16) / 15)
+  }));
+}
+function tagFont() { return `900 ${Math.round(R * 0.5)}px Rubik, sans-serif`; }
+function tagWidth(text) {
+  ctx.save(); ctx.font = tagFont();
+  const w = ctx.measureText(String(text).toUpperCase()).width;
+  ctx.restore();
+  return w;
+}
+function drawTag(tg, a) {
+  const size = Math.round(R * 0.5), ink = '#0f0f12';
+  const text = String(tg.text).toUpperCase();
+  const [top, bottom] = TAG_FILL[Math.abs(tg.color | 0) % TAG_FILL.length];
+  if (tg.fade !== undefined) a *= tg.fade;                   // Бульк оттирает губкой
+  ctx.save();
+  ctx.translate(W * tg.x, FLOOR * tg.y); ctx.rotate(tg.tilt * Math.PI / 180);
+  ctx.transform(1, 0, -0.18, 1, 0, 0);                        // буквы с наклоном
+  ctx.font = tagFont();
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round';
+  const tw = ctx.measureText(text).width;
+  if (tg.reveal !== undefined) {
+    // ещё рисуется — видно только то, что уже прошёл баллончик
+    ctx.beginPath(); ctx.rect(-tw / 2 - size, -size * 2, size + tw * tg.reveal, size * 5); ctx.clip();
+  }
+  const drips = tagDrips(text, size), dw = size * 0.13;
+  // краска распылилась вокруг букв
+  ctx.globalAlpha = 0.5 * a; ctx.shadowColor = top; ctx.shadowBlur = size * 0.6;
+  ctx.fillStyle = top; ctx.fillText(text, 0, 0);
+  ctx.shadowBlur = 0; ctx.globalAlpha = 0.95 * a;
+  // объёмная тень и контур
+  ctx.fillStyle = ink; ctx.strokeStyle = ink; ctx.lineWidth = size * 0.18;
+  ctx.strokeText(text, size * 0.12, size * 0.12); ctx.fillText(text, size * 0.12, size * 0.12);
+  for (const d of drips) { roundRect(-tw / 2 + tw * d.x - dw / 2 - 1, size * 0.2 - 1, dw + 2, d.len + 2, dw / 2 + 1); ctx.fill(); }
+  ctx.strokeText(text, 0, 0);
+  // подтёки и заливка
+  ctx.fillStyle = bottom;
+  for (const d of drips) { roundRect(-tw / 2 + tw * d.x - dw / 2, size * 0.2, dw, d.len, dw / 2); ctx.fill(); }
+  const g = ctx.createLinearGradient(0, -size / 2, 0, size / 2);
+  g.addColorStop(0, top); g.addColorStop(1, bottom);
+  ctx.fillStyle = g; ctx.fillText(text, 0, 0);
+  ctx.restore();
+}
 function drawDecor(lv) {
   const a = 0.3 + 0.7 * lv;
   ctx.save();
-  for (const tg of room.tags) {
-    ctx.save();
-    ctx.translate(W * tg.x, FLOOR * tg.y); ctx.rotate(tg.tilt * Math.PI / 180);
-    ctx.globalAlpha = 0.7 * a;
-    ctx.fillStyle = TAG_COLORS[tg.color % TAG_COLORS.length];
-    ctx.font = `italic 900 ${Math.round(R * 0.45)}px Rubik, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText(tg.text, 0, 0);
-    ctx.restore();
-  }
+  for (const tg of room.tags) drawTag(tg, a);
   ctx.globalAlpha = 0.35 + 0.65 * lv;
   ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
   for (const g of room.gifts) {
@@ -1661,6 +1808,10 @@ function drawHands(rx, ry, mid, lo, lv) {
       ctx.fillStyle = '#e64d73'; ctx.strokeStyle = '#141417'; ctx.lineWidth = 1.2;
       roundRect(-R * 0.09, -R * 0.15, R * 0.18, R * 0.34, R * 0.05); ctx.fill(); ctx.stroke();
       ctx.fillStyle = '#bfbfbf'; ctx.fillRect(-R * 0.045, -R * 0.24, R * 0.09, R * 0.08);
+    } else if (b.holdProp === 'sponge') {
+      ctx.translate(pts.r.x + R * 0.05, pts.r.y - R * 0.2);
+      ctx.font = `${R * 0.5}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('🧽', 0, 0);
     } else {
       ctx.translate(mx, my - R * 0.05);
       if (b.holdProp === 'book') ctx.rotate(Math.PI);           // книжка вверх ногами
@@ -1701,7 +1852,10 @@ function drawParts(lv) {
       ctx.fillStyle = `rgba(170,210,140,${a * 0.5})`;
       ctx.beginPath(); ctx.arc(p.x, p.y, p.size * (1.6 - a * 0.6), 0, Math.PI * 2); ctx.fill();
     } else if (p.type === 'spark') {
-      ctx.fillStyle = `rgba(255,230,160,${a})`; ctx.fillRect(p.x - 1.5, p.y - 1.5, 3, 3);
+      if (p.color) {                                         // брызги краски или пена
+        ctx.save(); ctx.globalAlpha = a; ctx.fillStyle = p.color;
+        ctx.beginPath(); ctx.arc(p.x, p.y, 2.2, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+      } else { ctx.fillStyle = `rgba(255,230,160,${a})`; ctx.fillRect(p.x - 1.5, p.y - 1.5, 3, 3); }
     } else if (p.type === 'bottle') {
       ctx.save(); ctx.globalAlpha = a; ctx.translate(p.x, Math.min(p.y, FLOOR - R * 0.2)); ctx.rotate(p.rot); drawBottle(R, lightAt(p.x, lv)); ctx.restore();
     } else if (p.type === 'ring') {
