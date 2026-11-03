@@ -2,6 +2,23 @@ import SwiftUI
 
 // MARK: - Лицо
 
+/// Один штрих лица: контур или заливка.
+struct FaceOp {
+    let path: Path
+    let color: Color
+    var stroke = false
+    var lineWidth: CGFloat = 1.5
+    var glow = false
+}
+
+struct FixedPath: Shape {
+    let p: Path
+    func path(in rect: CGRect) -> Path { p }
+}
+
+// Лицо собрано из отдельных фигур, а не одной картинкой (Canvas):
+// при движении в виджете фигуры едут вместе с телом, а картинка «растворялась»
+// на старом месте — получалась вторая пара глаз.
 struct FaceView: View {
     var eyes: Eyes
     var mouth: Mouth
@@ -10,120 +27,140 @@ struct FaceView: View {
     var look: Double = 0          // -1 — смотрит влево, 1 — вправо
 
     var body: some View {
-        Canvas { ctx, size in
-            let w = size.width, h = size.height
-            let line = Color(white: 0.08)
-            let ew = w * 0.17, eh = h * 0.24
-            let lw = max(1.4, w * 0.045)
-            let stroke = StrokeStyle(lineWidth: lw, lineCap: .round, lineJoin: .round)
-
-            // румянец
-            for cx in [w * 0.1, w * 0.9] {
-                let r = CGRect(x: cx - ew * 0.75, y: h * 0.52, width: ew * 1.5, height: eh * 0.38)
-                ctx.fill(Path(ellipseIn: r), with: .color(Color(red: 1, green: 0.45, blue: 0.55).opacity(blush)))
-            }
-
-            var ectx = ctx
-            if glow { ectx.addFilter(.shadow(color: Color.white.opacity(0.9), radius: 3)) }
-
-            // глаза небольшие, близко посажены, в верхней части тела
-            for (i, cx) in [w * 0.35, w * 0.65].enumerated() {
-                let side: CGFloat = i == 0 ? -1 : 1
-                let cy = h * 0.3
-                switch eyes {
-                case .closed:
-                    var p = Path()
-                    p.move(to: CGPoint(x: cx - ew * 0.8, y: cy))
-                    p.addQuadCurve(to: CGPoint(x: cx + ew * 0.8, y: cy), control: CGPoint(x: cx, y: cy + eh * 0.6))
-                    ectx.stroke(p, with: .color(line), style: stroke)
-                case .happy:
-                    var p = Path()
-                    p.move(to: CGPoint(x: cx - ew * 0.8, y: cy + eh * 0.2))
-                    p.addQuadCurve(to: CGPoint(x: cx + ew * 0.8, y: cy + eh * 0.2), control: CGPoint(x: cx, y: cy - eh * 0.7))
-                    ectx.stroke(p, with: .color(line), style: stroke)
-                case .dizzy:
-                    var p = Path()
-                    p.move(to: CGPoint(x: cx - ew * 0.6, y: cy - eh * 0.5))
-                    p.addLine(to: CGPoint(x: cx + ew * 0.6, y: cy + eh * 0.5))
-                    p.move(to: CGPoint(x: cx + ew * 0.6, y: cy - eh * 0.5))
-                    p.addLine(to: CGPoint(x: cx - ew * 0.6, y: cy + eh * 0.5))
-                    ectx.stroke(p, with: .color(line), style: stroke)
-                case .drunk:
-                    var p = Path()
-                    p.move(to: CGPoint(x: cx - ew, y: cy))
-                    p.addQuadCurve(to: CGPoint(x: cx + ew, y: cy), control: CGPoint(x: cx, y: cy + eh * 2))
-                    p.closeSubpath()
-                    ectx.fill(p, with: .color(.white))
-                    let pr = ew * 0.45
-                    ctx.fill(Path(ellipseIn: CGRect(x: cx + side * ew * 0.25 - pr, y: cy + eh * 0.45 - pr, width: pr * 2, height: pr * 2)), with: .color(.black))
-                    var lid = Path()
-                    lid.move(to: CGPoint(x: cx - ew * 1.05, y: cy))
-                    lid.addLine(to: CGPoint(x: cx + ew * 1.05, y: cy))
-                    ctx.stroke(lid, with: .color(line), style: stroke)
-                case .open, .wide, .angry:
-                    let k: CGFloat = eyes == .wide ? 1.22 : 1
-                    let ew2 = ew * k, eh2 = eh * k
-                    let eyeRect = CGRect(x: cx - ew2, y: cy - eh2, width: ew2 * 2, height: eh2 * 2)
-                    ectx.fill(Path(ellipseIn: eyeRect), with: .color(.white))
-                    ctx.stroke(Path(ellipseIn: eyeRect), with: .color(Color(white: 0.08)), lineWidth: 1.5)
-                    let pr = eyes == .wide ? ew2 * 0.34 : ew2 * 0.5
-                    let px = cx + CGFloat(look) * (ew2 - pr) * 0.9
-                    ctx.fill(Path(ellipseIn: CGRect(x: px - pr, y: cy - pr + eh2 * 0.1, width: pr * 2, height: pr * 2)), with: .color(.black))
-                    let hr = pr * 0.32
-                    ctx.fill(Path(ellipseIn: CGRect(x: px - pr * 0.35 - hr, y: cy - pr * 0.35 + eh2 * 0.1 - hr, width: hr * 2, height: hr * 2)), with: .color(.white))
-                    if eyes == .angry {
-                        var b = Path()
-                        b.move(to: CGPoint(x: cx + side * ew * 0.9, y: cy - eh * 1.55))
-                        b.addLine(to: CGPoint(x: cx - side * ew * 0.9, y: cy - eh * 1.05))
-                        ctx.stroke(b, with: .color(line), style: stroke)
+        GeometryReader { g in
+            ZStack {
+                ForEach(Array(ops(g.size).enumerated()), id: \.offset) { _, op in
+                    Group {
+                        if op.stroke {
+                            FixedPath(p: op.path)
+                                .stroke(op.color, style: StrokeStyle(lineWidth: op.lineWidth, lineCap: .round, lineJoin: .round))
+                        } else {
+                            FixedPath(p: op.path).fill(op.color)
+                        }
                     }
+                    .shadow(color: op.glow ? Color.white.opacity(0.9) : .clear, radius: op.glow ? 3 : 0)
                 }
-            }
-
-            // рот
-            let mx = w * 0.5, my = h * 0.82, mw = w * 0.12
-            let mouthFill = Color(white: 0.08)
-            let tongue = Color(red: 0.94, green: 0.43, blue: 0.51)
-            switch mouth {
-            case .smile:
-                var p = Path()
-                p.move(to: CGPoint(x: mx - mw, y: my - mw * 0.25))
-                p.addQuadCurve(to: CGPoint(x: mx + mw, y: my - mw * 0.25), control: CGPoint(x: mx, y: my + mw * 0.9))
-                ctx.stroke(p, with: .color(line), style: stroke)
-            case .grin:
-                var p = Path()
-                p.move(to: CGPoint(x: mx - mw, y: my - mw * 0.3))
-                p.addQuadCurve(to: CGPoint(x: mx + mw, y: my - mw * 0.3), control: CGPoint(x: mx, y: my + mw * 1.5))
-                p.closeSubpath()
-                ctx.fill(p, with: .color(mouthFill))
-                ctx.fill(Path(ellipseIn: CGRect(x: mx - mw * 0.4, y: my + mw * 0.15, width: mw * 0.8, height: mw * 0.35)), with: .color(tongue))
-            case .o:
-                ctx.fill(Path(ellipseIn: CGRect(x: mx - mw * 0.32, y: my - mw * 0.4, width: mw * 0.64, height: mw * 0.8)), with: .color(mouthFill))
-            case .wide:
-                ctx.fill(Path(ellipseIn: CGRect(x: mx - mw * 0.85, y: my - mw * 0.55, width: mw * 1.7, height: mw * 1.4)), with: .color(mouthFill))
-                ctx.fill(Path(ellipseIn: CGRect(x: mx - mw * 0.5, y: my + mw * 0.3, width: mw, height: mw * 0.45)), with: .color(tongue))
-            case .flat:
-                var p = Path()
-                p.move(to: CGPoint(x: mx - mw * 0.6, y: my - mw * 0.1))
-                p.addLine(to: CGPoint(x: mx + mw * 0.6, y: my + mw * 0.15))
-                ctx.stroke(p, with: .color(line), style: stroke)
-            case .frown:
-                var p = Path()
-                p.move(to: CGPoint(x: mx - mw * 0.8, y: my + mw * 0.3))
-                p.addQuadCurve(to: CGPoint(x: mx + mw * 0.8, y: my + mw * 0.3), control: CGPoint(x: mx, y: my - mw * 0.7))
-                ctx.stroke(p, with: .color(line), style: stroke)
-            case .wavy:
-                var p = Path()
-                p.move(to: CGPoint(x: mx - mw, y: my))
-                p.addQuadCurve(to: CGPoint(x: mx - mw * 0.33, y: my), control: CGPoint(x: mx - mw * 0.66, y: my - mw * 0.35))
-                p.addQuadCurve(to: CGPoint(x: mx + mw * 0.33, y: my), control: CGPoint(x: mx, y: my + mw * 0.35))
-                p.addQuadCurve(to: CGPoint(x: mx + mw, y: my), control: CGPoint(x: mx + mw * 0.66, y: my - mw * 0.35))
-                ctx.stroke(p, with: .color(line), style: stroke)
             }
         }
     }
-}
 
+    private func ops(_ size: CGSize) -> [FaceOp] {
+        var out: [FaceOp] = []
+        let w = size.width, h = size.height
+        let line = Color(white: 0.08)
+        let ew = w * 0.17, eh = h * 0.24
+        let lw = max(1.4, w * 0.045)
+
+        // румянец
+        for cx in [w * 0.1, w * 0.9] {
+            let r = CGRect(x: cx - ew * 0.75, y: h * 0.52, width: ew * 1.5, height: eh * 0.38)
+            out.append(FaceOp(path: Path(ellipseIn: r), color: Color(red: 1, green: 0.45, blue: 0.55).opacity(blush)))
+        }
+
+        // глаза небольшие, близко посажены, в верхней части тела
+        for (i, cx) in [w * 0.35, w * 0.65].enumerated() {
+            let side: CGFloat = i == 0 ? -1 : 1
+            let cy = h * 0.3
+            switch eyes {
+            case .closed:
+                var p = Path()
+                p.move(to: CGPoint(x: cx - ew * 0.8, y: cy))
+                p.addQuadCurve(to: CGPoint(x: cx + ew * 0.8, y: cy), control: CGPoint(x: cx, y: cy + eh * 0.6))
+                out.append(FaceOp(path: p, color: line, stroke: true, lineWidth: lw, glow: glow))
+            case .happy:
+                var p = Path()
+                p.move(to: CGPoint(x: cx - ew * 0.8, y: cy + eh * 0.2))
+                p.addQuadCurve(to: CGPoint(x: cx + ew * 0.8, y: cy + eh * 0.2), control: CGPoint(x: cx, y: cy - eh * 0.7))
+                out.append(FaceOp(path: p, color: line, stroke: true, lineWidth: lw, glow: glow))
+            case .dizzy:
+                var p = Path()
+                p.move(to: CGPoint(x: cx - ew * 0.6, y: cy - eh * 0.5))
+                p.addLine(to: CGPoint(x: cx + ew * 0.6, y: cy + eh * 0.5))
+                p.move(to: CGPoint(x: cx + ew * 0.6, y: cy - eh * 0.5))
+                p.addLine(to: CGPoint(x: cx - ew * 0.6, y: cy + eh * 0.5))
+                out.append(FaceOp(path: p, color: line, stroke: true, lineWidth: lw, glow: glow))
+            case .drunk:
+                var p = Path()
+                p.move(to: CGPoint(x: cx - ew, y: cy))
+                p.addQuadCurve(to: CGPoint(x: cx + ew, y: cy), control: CGPoint(x: cx, y: cy + eh * 2))
+                p.closeSubpath()
+                out.append(FaceOp(path: p, color: .white, glow: glow))
+                let pr = ew * 0.45
+                out.append(FaceOp(path: Path(ellipseIn: CGRect(x: cx + side * ew * 0.25 - pr, y: cy + eh * 0.45 - pr,
+                                                                width: pr * 2, height: pr * 2)), color: .black))
+                var lid = Path()
+                lid.move(to: CGPoint(x: cx - ew * 1.05, y: cy))
+                lid.addLine(to: CGPoint(x: cx + ew * 1.05, y: cy))
+                out.append(FaceOp(path: lid, color: line, stroke: true, lineWidth: lw))
+            case .open, .wide, .angry:
+                let k: CGFloat = eyes == .wide ? 1.22 : 1
+                let ew2 = ew * k, eh2 = eh * k
+                let eyeRect = CGRect(x: cx - ew2, y: cy - eh2, width: ew2 * 2, height: eh2 * 2)
+                out.append(FaceOp(path: Path(ellipseIn: eyeRect), color: .white, glow: glow))
+                out.append(FaceOp(path: Path(ellipseIn: eyeRect), color: line, stroke: true, lineWidth: 1.5))
+                let pr = eyes == .wide ? ew2 * 0.34 : ew2 * 0.5
+                let px = cx + CGFloat(look) * (ew2 - pr) * 0.9
+                out.append(FaceOp(path: Path(ellipseIn: CGRect(x: px - pr, y: cy - pr + eh2 * 0.1, width: pr * 2, height: pr * 2)),
+                                  color: .black))
+                let hr = pr * 0.32
+                out.append(FaceOp(path: Path(ellipseIn: CGRect(x: px - pr * 0.35 - hr, y: cy - pr * 0.35 + eh2 * 0.1 - hr,
+                                                                width: hr * 2, height: hr * 2)), color: .white))
+                if eyes == .angry {
+                    var b = Path()
+                    b.move(to: CGPoint(x: cx + side * ew * 0.9, y: cy - eh * 1.55))
+                    b.addLine(to: CGPoint(x: cx - side * ew * 0.9, y: cy - eh * 1.05))
+                    out.append(FaceOp(path: b, color: line, stroke: true, lineWidth: lw))
+                }
+            }
+        }
+
+        // рот
+        let mx = w * 0.5, my = h * 0.82, mw = w * 0.12
+        let mouthFill = Color(white: 0.08)
+        let tongue = Color(red: 0.94, green: 0.43, blue: 0.51)
+        switch mouth {
+        case .smile:
+            var p = Path()
+            p.move(to: CGPoint(x: mx - mw, y: my - mw * 0.25))
+            p.addQuadCurve(to: CGPoint(x: mx + mw, y: my - mw * 0.25), control: CGPoint(x: mx, y: my + mw * 0.9))
+            out.append(FaceOp(path: p, color: line, stroke: true, lineWidth: lw))
+        case .grin:
+            var p = Path()
+            p.move(to: CGPoint(x: mx - mw, y: my - mw * 0.3))
+            p.addQuadCurve(to: CGPoint(x: mx + mw, y: my - mw * 0.3), control: CGPoint(x: mx, y: my + mw * 1.5))
+            p.closeSubpath()
+            out.append(FaceOp(path: p, color: mouthFill))
+            out.append(FaceOp(path: Path(ellipseIn: CGRect(x: mx - mw * 0.4, y: my + mw * 0.15, width: mw * 0.8, height: mw * 0.35)),
+                              color: tongue))
+        case .o:
+            out.append(FaceOp(path: Path(ellipseIn: CGRect(x: mx - mw * 0.32, y: my - mw * 0.4, width: mw * 0.64, height: mw * 0.8)),
+                              color: mouthFill))
+        case .wide:
+            out.append(FaceOp(path: Path(ellipseIn: CGRect(x: mx - mw * 0.85, y: my - mw * 0.55, width: mw * 1.7, height: mw * 1.4)),
+                              color: mouthFill))
+            out.append(FaceOp(path: Path(ellipseIn: CGRect(x: mx - mw * 0.5, y: my + mw * 0.3, width: mw, height: mw * 0.45)),
+                              color: tongue))
+        case .flat:
+            var p = Path()
+            p.move(to: CGPoint(x: mx - mw * 0.6, y: my - mw * 0.1))
+            p.addLine(to: CGPoint(x: mx + mw * 0.6, y: my + mw * 0.15))
+            out.append(FaceOp(path: p, color: line, stroke: true, lineWidth: lw))
+        case .frown:
+            var p = Path()
+            p.move(to: CGPoint(x: mx - mw * 0.8, y: my + mw * 0.3))
+            p.addQuadCurve(to: CGPoint(x: mx + mw * 0.8, y: my + mw * 0.3), control: CGPoint(x: mx, y: my - mw * 0.7))
+            out.append(FaceOp(path: p, color: line, stroke: true, lineWidth: lw))
+        case .wavy:
+            var p = Path()
+            p.move(to: CGPoint(x: mx - mw, y: my))
+            p.addQuadCurve(to: CGPoint(x: mx - mw * 0.33, y: my), control: CGPoint(x: mx - mw * 0.66, y: my - mw * 0.35))
+            p.addQuadCurve(to: CGPoint(x: mx + mw * 0.33, y: my), control: CGPoint(x: mx, y: my + mw * 0.35))
+            p.addQuadCurve(to: CGPoint(x: mx + mw, y: my), control: CGPoint(x: mx + mw * 0.66, y: my - mw * 0.35))
+            out.append(FaceOp(path: p, color: line, stroke: true, lineWidth: lw))
+        }
+        return out
+    }
+}
 // MARK: - Предметы
 
 struct BulbView: View {
