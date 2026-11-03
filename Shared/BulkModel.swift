@@ -274,30 +274,16 @@ struct BulkState: Codable {
 enum BulkStore {
     private static let key = "bulk.state.v1"
 
-    /// Диагностика: по каким каналам видно состояние, записанное приложением.
+    /// Диагностика (старое): по каким каналам видно состояние, записанное приложением.
     static var appSeenVia: [String] = []
 
-    // Берём самое свежее состояние из своей памяти и из общих каналов (буфер, связка ключей);
-    // напоминания собираем из всех.
+    // Состояние хранится в одном месте — общей памяти приложения и виджета (App Group, её выдаёт AltStore).
+    // Запасные каналы (буфер обмена, связка ключей) убраны: у приложения и виджета они были свои,
+    // и виджет мог взять оттуда устаревшую копию — терялись граффити, «воскресали» напоминания.
     static func load() -> BulkState {
-        let decoder = JSONDecoder()
-        let sources: [(String, Data?)] = [
-            ("своё", SharedGroup.defaults.data(forKey: key)),
-            ("буфер", SharedBridge.read()),
-            ("связка", SharedKeychain.read())
-        ]
-        var states: [BulkState] = []
-        appSeenVia = []
-        for (name, data) in sources {
-            guard let data, let s = try? decoder.decode(BulkState.self, from: data) else { continue }
-            states.append(s)
-            if s.writer == "app" { appSeenVia.append(name) }
-        }
-        guard var newest = states.max(by: { $0.since < $1.since }) else { return BulkState() }
-        for s in states {
-            for r in s.reminders where !newest.reminders.contains(r) { newest.reminders.append(r) }
-        }
-        return newest
+        guard let data = SharedGroup.defaults.data(forKey: key),
+              let s = try? JSONDecoder().decode(BulkState.self, from: data) else { return BulkState() }
+        return s
     }
 
     static func save(_ state: BulkState, writer: String) {
@@ -305,12 +291,9 @@ enum BulkStore {
         s.writer = writer
         if let data = try? JSONEncoder().encode(s) {
             SharedGroup.defaults.set(data, forKey: key)
-            SharedBridge.write(data)
-            SharedKeychain.write(data)
         }
     }
 }
-
 enum BulkBrain {
     // Сам решает, чем заняться дальше. Живёт по времени суток:
     // ночью в основном спит, утром кофе и зевота, в пятницу вечером пьёт и танцует, в понедельник утром бурчит.

@@ -784,8 +784,10 @@ function todayStr(d = new Date()) {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 function bump(key, n = 1) {
+  // приложение было открыто через полночь — начинаем новый день (и пишем дневник за вчера)
+  if (prog.day && prog.day.date && prog.day.date !== todayStr()) startDay();
   prog.stats[key] = (prog.stats[key] || 0) + n;
-  if (prog.day.date === todayStr()) prog.day.stats[key] = (prog.day.stats[key] || 0) + n;
+  prog.day.stats[key] = (prog.day.stats[key] || 0) + n;
   checkAchievements();
   saveMemory();
 }

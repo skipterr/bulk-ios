@@ -19,11 +19,21 @@ struct BulkApp: App {
 // В приложении Бульк полностью живой: внутри та же комната, что в веб-версии,
 // с плавной анимацией, тычками, броском, кнопками и чатом.
 struct ContentView: View {
+    @Environment(\.scenePhase) private var scenePhase
+
     var body: some View {
         BulkWebView()
             .ignoresSafeArea()
             .background(Color(white: 0.11))
             .preferredColorScheme(.dark)
+            // каждый раз, когда открываешь Булька (и после фона тоже), он отмечает, что ты заходил
+            .onChange(of: scenePhase) { _, phase in
+                guard phase == .active else { return }
+                var s = BulkStore.load()
+                s.lastVisit = Date()
+                BulkStore.save(s, writer: "app")
+                WidgetCenter.shared.reloadAllTimelines()
+            }
     }
 }
 
