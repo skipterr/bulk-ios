@@ -1104,7 +1104,7 @@ async function askGemini(text) {
       '\nНа стене сейчас граффити: ' + (room.tags.length ? room.tags.map(t => t.text).join(', ') : 'ничего') + '.' +
       (chat.facts.length ? '\nЧто ты знаешь о хозяине:\n- ' + chat.facts.join('\n- ') : '') }] },
     contents: chat.history,
-    generationConfig: { responseMimeType: 'application/json', temperature: 1, maxOutputTokens: 1024 }
+    generationConfig: { responseMimeType: 'application/json', temperature: 1, maxOutputTokens: 4096 }
   });
   chat.history.push({ role: 'model', parts: [{ text: JSON.stringify(out) }] });
   return out;
@@ -1115,8 +1115,22 @@ function geminiOnce(prompt) {
   return callGemini({
     systemInstruction: { parts: [{ text: BULK_PERSONA + '\nСейчас: ' + nowForPrompt() + '.' }] },
     contents: [{ role: 'user', parts: [{ text: prompt }] }],
-    generationConfig: { responseMimeType: 'application/json', temperature: 1, maxOutputTokens: 1024 }
+    generationConfig: { responseMimeType: 'application/json', temperature: 1, maxOutputTokens: 4096 }
   });
+}
+
+// Ответ оборвался посреди JSON ({"reply": "О, конечно! Я в ду...) — вытаскиваем саму реплику, без скобок и кавычек.
+function replyFromBroken(raw) {
+  const m = /"reply"\s*:\s*"((?:[^"\\]|\\.)*)/.exec(raw || '');
+  if (!m) return (raw || '').replace(/[{}"]/g, '').trim() || '...';
+  let s = m[1].replace(/\\$/, '');
+  try { s = JSON.parse('"' + s + '"'); } catch (_) { s = s.replace(/\\n/g, ' ').replace(/\\"/g, '"'); }
+  // оборвалось на полуслове — обрезаем до последнего целого предложения или слова
+  if (!/"\s*[,}]/.test(raw.slice(m.index + m[0].length, m.index + m[0].length + 3))) {
+    const cut = Math.max(s.lastIndexOf('. '), s.lastIndexOf('! '), s.lastIndexOf('? '));
+    s = cut > 10 ? s.slice(0, cut + 1) : s.replace(/\s+\S*$/, '') + '…';
+  }
+  return s.trim() || '...';
 }
 
 // Перебирает модели, пока какая-то не ответит; возвращает разобранный JSON-ответ Булька.
@@ -1147,7 +1161,7 @@ async function callGemini(body) {
     const raw = ((data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts) || [])
       .map(p => p.text || '').join('');
     let out;
-    try { out = JSON.parse(raw); } catch (_) { out = { reply: raw.trim() || '...', action: 'none' }; }
+    try { out = JSON.parse(raw); } catch (_) { out = { reply: replyFromBroken(raw), action: 'none' }; }
     return out;
   }
   throw new Error(lastErr || 'не получилось');
@@ -1355,6 +1369,8 @@ function nextOnboard() {
 
 cv.addEventListener('pointerdown', e => {
   if (onboard.step >= 0) { e.preventDefault(); nextOnboard(); return; }
+  // передумал писать — тап по комнате убирает клавиатуру (Булька при этом не тыкаем)
+  if (document.body.classList.contains('typing')) { e.preventDefault(); chatInput.blur(); return; }
   const p = evPos(e);
   try { cv.setPointerCapture(e.pointerId); } catch (_) {}
   Object.assign(ptr, { down: true, x: p.x, y: p.y, sx: p.x, sy: p.y, t0: performance.now(), hist: [{ x: p.x, y: p.y, t: performance.now() }] });
@@ -1715,6 +1731,8 @@ function drawDecor(lv) {
   ctx.save();
   for (const tg of room.tags) drawTag(tg, a);
   ctx.globalAlpha = 0.35 + 0.65 * lv;
+  // Safari берёт прозрачность эмодзи из fillStyle — без плотного цвета подарки при свете почти не видны
+  ctx.fillStyle = '#fff';
   ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
   for (const g of room.gifts) {
     const s = GIFT_SPOT[g]; if (!s) continue;
@@ -1969,12 +1987,12 @@ function drawHands(rx, ry, mid, lo, lv) {
     } else if (b.holdProp === 'sponge') {
       ctx.translate(pts.r.x + R * 0.05, pts.r.y - R * 0.2);
       ctx.font = `${R * 0.5}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText('🧽', 0, 0);
+      ctx.fillStyle = '#fff'; ctx.fillText('🧽', 0, 0);
     } else {
       ctx.translate(mx, my - R * 0.05);
       if (b.holdProp === 'book') ctx.rotate(Math.PI);           // книжка вверх ногами
       ctx.font = `${R * 0.55}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText(b.holdProp === 'book' ? '📖' : '🎮', 0, 0);
+      ctx.fillStyle = '#fff'; ctx.fillText(b.holdProp === 'book' ? '📖' : '🎮', 0, 0);
     }
     ctx.restore();
   }
