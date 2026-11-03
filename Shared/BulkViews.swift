@@ -709,10 +709,13 @@ struct GraffitiTag: View {
     static func drips(_ text: String) -> [(x: CGFloat, len: CGFloat)] {
         var h: UInt32 = 0
         for u in text.unicodeScalars { h = h &* 31 &+ u.value }
-        return (0..<3).map { i in
-            (0.12 + 0.76 * CGFloat((h >> UInt32(i * 5)) % 32) / 31,
-             size * (0.25 + 0.5 * CGFloat((h >> UInt32(i * 7 + 3)) % 16) / 15))
+        var out: [(x: CGFloat, len: CGFloat)] = []
+        for i in 0..<3 {
+            let a = CGFloat((h >> UInt32(i * 5)) % 32) / 31
+            let b = CGFloat((h >> UInt32(i * 7 + 3)) % 16) / 15
+            out.append((x: 0.12 + 0.76 * a, len: size * (0.25 + 0.5 * b)))
         }
+        return out
     }
 
     var body: some View {
@@ -728,8 +731,9 @@ struct GraffitiTag: View {
             word.foregroundStyle(ink).offset(x: s * 0.12, y: s * 0.12)
             // контур
             ForEach(0..<8, id: \.self) { i in
-                let a = CGFloat(i) * .pi / 4
-                word.foregroundStyle(ink).offset(x: cos(a) * s * 0.09, y: sin(a) * s * 0.09)
+                let a: CGFloat = CGFloat(i) * .pi / 4
+                let r: CGFloat = s * 0.09
+                word.foregroundStyle(ink).offset(x: cos(a) * r, y: sin(a) * r)
             }
             word.foregroundStyle(LinearGradient(colors: [pair.0, pair.1], startPoint: .top, endPoint: .bottom))
         }
