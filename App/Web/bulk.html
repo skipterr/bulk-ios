@@ -50,12 +50,59 @@ button:focus-visible{outline:2px solid var(--glow);outline-offset:2px}
 .hint{font-size:12px;color:var(--muted);text-align:center;text-wrap:balance}
 .hint{max-height:40px;overflow:hidden;transition:opacity .5s ease,max-height .5s ease}
 .hint.gone{opacity:0;max-height:0;margin-top:-8px}
+body.typing .corner{display:none}
+.corner{position:absolute;top:calc(8px + env(safe-area-inset-top, 0px));right:max(16px, env(safe-area-inset-right, 0px));
+  padding:8px 11px;font-size:18px;background:rgba(17,18,24,.55)}
+.sheet{position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:flex-end;justify-content:center;z-index:20}
+.sheet-card{width:100%;max-width:560px;max-height:78%;overflow:auto;background:var(--panel);border-top:1px solid var(--line);
+  border-radius:18px 18px 0 0;padding:14px max(16px, env(safe-area-inset-right, 0px)) calc(16px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px))}
+.sheet-head{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:12px}
+.tabs{display:flex;gap:6px}
+.tabs button.on{background:#2a2c36;border-color:#4a4d5a}
+.love{margin-bottom:12px}
+.love-row{display:flex;justify-content:space-between;gap:8px;font-size:14px;margin-bottom:6px}
+.love-row span:last-child{color:var(--muted)}
+.love-bar{height:8px;border-radius:99px;background:#24262f;overflow:hidden}
+.love-bar i{display:block;height:100%;background:#e6b84a;border-radius:99px;transition:width .4s}
+.ach{display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--line);opacity:.55}
+.ach.done{opacity:1}
+.ach-icon{font-size:22px;width:30px;text-align:center}
+.ach-text{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.ach-text b{font-weight:500;font-size:14px}
+.ach-text small,.entry small,.empty{color:var(--muted);font-size:12px}
+.ach-num{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
+.entry{padding:10px 0;border-top:1px solid var(--line)}
+.entry p{margin:4px 0 0;font-family:var(--font-hand);font-size:19px;line-height:1.3}
+.wide{width:100%;margin-top:12px}
 </style>
 
 <div class="app">
   <div class="stage" id="stage">
     <canvas id="room" aria-label="Тёмная комната, в которой живёт Бульк"></canvas>
     <div class="status" id="status">Бульк <b>просыпается</b></div>
+    <button id="bProgress" class="corner" type="button" aria-label="Ачивки и дневник">🏆</button>
+  </div>
+  <div class="sheet" id="sheet" hidden>
+    <div class="sheet-card">
+      <div class="sheet-head">
+        <div class="tabs">
+          <button id="tabAch" type="button" class="on">Ачивки</button>
+          <button id="tabDiary" type="button">Дневник</button>
+        </div>
+        <button id="sheetClose" type="button" aria-label="Закрыть">✕</button>
+      </div>
+      <div id="paneAch">
+        <div class="love">
+          <div class="love-row"><span id="loveLabel"></span><span id="achCount"></span></div>
+          <div class="love-bar"><i id="loveFill"></i></div>
+        </div>
+        <div id="achList"></div>
+      </div>
+      <div id="paneDiary" hidden>
+        <div id="diaryList"></div>
+        <button id="diaryNow" type="button" class="wide">Пусть Бульк запишет сегодняшний день</button>
+      </div>
+    </div>
   </div>
   <div class="bar">
     <form class="chat" id="chatForm" autocomplete="off">
@@ -579,6 +626,7 @@ function startSulk() {
   sulkUntil = Date.now() + 20 * 60 * 1000;
   setAct('sulk');
   say(pick(['всё, я обиделся', 'не разговариваю с тобой', 'хмф. обиделся']), 2.5);
+  bump('sulks'); love(-8);
   notifyWidget('sulk');
 }
 function poke() {
@@ -586,11 +634,13 @@ function poke() {
   if (sulking()) { b.sv -= 1.5; say(pick(['не трогай меня', 'я обиделся', 'отстань', 'хмф']), 1.4); return; }
   if (b.asleep) { setAct('wake'); notifyWidget('mad'); return; }
   pokes += 1; b.sv -= 2.8; if (b.ground) b.vx += rand(-1, 1) * R;
+  bump('pokes'); love(-0.3);
   if (pokes >= 5) {
     pokes = 1.5;
     const now = Date.now();
     madTimes = madTimes.filter(m => now - m < 10 * 60 * 1000).concat(now);
     if (madTimes.length >= 2) { madTimes = []; startSulk(); return; }
+    love(-3);
     setAct('swear'); say(pick(P.pokeMad), 2); notifyWidget('mad'); return;
   }
   notifyWidget('poked');
@@ -601,6 +651,7 @@ function toggleLamp() {
   if (!lamp.hasBulb) { say(pick(P.bulbMine)); return; }
   lamp.on = !lamp.on; lamp.flick = 0.12;
   notifyWidget(lamp.on ? 'chill' : 'scared');
+  if (!lamp.on) { bump('lightsOff'); love(-0.5); }
   if (!lamp.on) {
     if (b.asleep || !free()) return;
     setAct('scared');
@@ -615,6 +666,7 @@ function throwShoe() {
   const d = Math.sign(b.x - shoe.x) || 1;
   shoe.vx = d * clamp(Math.abs(b.x - shoe.x) * 2.2, R * 6, R * 16); shoe.vy = -R * 11; shoe.vr = d * 14; shoe.kickT = 0;
   notifyWidget('mad');
+  bump('shoes');
 }
 function giveDrink() {
   if (!free()) { say(pick(P.busy), 1); return; }
@@ -622,12 +674,14 @@ function giveDrink() {
   if (b.asleep) { setAct('wake'); return; }
   setAct('drink');
   notifyWidget('drink');
+  bump('drinks'); love(1);
 }
 function sendToSleep() {
   if (!free()) { say(pick(P.busy), 1); return; }
   if (b.asleep) { setAct('wake'); return; }
   setAct('sleep');
   notifyWidget('sleep');
+  bump('naps');
 }
 document.getElementById('bDrink').onclick = giveDrink;
 document.getElementById('bLight').onclick = toggleLamp;
@@ -643,19 +697,158 @@ setTimeout(() => {
 
 // ---------- чат с Бульком (мозг — Gemini) ----------
 const chat = { waiting: false, history: [], facts: [] };
+
+// ---------- ачивки, отношение к тебе, дневник ----------
+// stats — что ты делал за всё время, love — как Бульк к тебе относится (0–100),
+// day — что было сегодня (из этого Бульк пишет дневник), diary — записи дневника.
+const prog = { stats: {}, unlocked: {}, love: 50, visitDays: [], day: { date: '', stats: {}, notes: [] }, diary: [] };
+const ACHIEVEMENTS = [
+  { id: 'firstDrink', icon: '🍺', t: 'Первая рюмка', d: 'Налить Бульку', k: 'drinks', n: 1 },
+  { id: 'drinks10', icon: '🍻', t: 'Собутыльник', d: 'Налить 10 раз', k: 'drinks', n: 10 },
+  { id: 'drinks50', icon: '🫗', t: 'Печень Булька', d: 'Налить 50 раз', k: 'drinks', n: 50 },
+  { id: 'pokes50', icon: '👉', t: 'Тыкатель', d: 'Тыкнуть 50 раз', k: 'pokes', n: 50 },
+  { id: 'throws10', icon: '🤾', t: 'Метатель Бульков', d: 'Кинуть Булька 10 раз', k: 'throws', n: 10 },
+  { id: 'dark10', icon: '🌑', t: 'Повелитель тьмы', d: 'Выключить свет 10 раз', k: 'lightsOff', n: 10 },
+  { id: 'shoe10', icon: '👟', t: 'Футболист', d: 'Кинуть ботинок 10 раз', k: 'shoes', n: 10 },
+  { id: 'naps10', icon: '😴', t: 'Колыбельная', d: 'Уложить спать 10 раз', k: 'naps', n: 10 },
+  { id: 'chat1', icon: '✉️', t: 'Первое письмо', d: 'Написать Бульку', k: 'chats', n: 1 },
+  { id: 'chat100', icon: '💬', t: 'Не разлей вода', d: '100 сообщений Бульку', k: 'chats', n: 100 },
+  { id: 'remind5', icon: '✅', t: 'Ответственный', d: 'Выполнить 5 напоминаний', k: 'remindersDone', n: 5 },
+  { id: 'sulk1', icon: '😤', t: 'Довёл', d: 'Обидеть Булька', k: 'sulks', n: 1 },
+  { id: 'sorry1', icon: '🤝', t: 'Мир-дружба', d: 'Помириться с Бульком', k: 'forgives', n: 1 },
+  { id: 'days3', icon: '📅', t: 'Три дня вместе', d: 'Заходить 3 разных дня', k: 'days', n: 3 },
+  { id: 'days7', icon: '🗓️', t: 'Неделя дружбы', d: 'Заходить 7 разных дней', k: 'days', n: 7 },
+  { id: 'days30', icon: '🏅', t: 'Месяц вместе', d: 'Заходить 30 разных дней', k: 'days', n: 30 }
+];
+function todayStr(d = new Date()) {
+  const p = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+function bump(key, n = 1) {
+  prog.stats[key] = (prog.stats[key] || 0) + n;
+  if (prog.day.date === todayStr()) prog.day.stats[key] = (prog.day.stats[key] || 0) + n;
+  checkAchievements();
+  saveMemory();
+}
+function love(delta) { prog.love = clamp((prog.love || 50) + delta, 0, 100); }
+function loveLabel() {
+  const l = prog.love;
+  return l >= 85 ? 'лучший друг 💛' : l >= 65 ? 'кореш' : l >= 45 ? 'нормально общаемся' : l >= 25 ? 'терпит тебя' : 'в обиде на тебя';
+}
+function checkAchievements() {
+  for (const a of ACHIEVEMENTS) {
+    if (!prog.unlocked[a.id] && (prog.stats[a.k] || 0) >= a.n) {
+      prog.unlocked[a.id] = todayStr();
+      say(`${a.icon} ачивка: ${a.t}!`, 3);
+      love(2);
+    }
+  }
+}
 // Память Булька: последние сообщения и факты о хозяине (хранятся в связке ключей iPhone).
 try {
   const mem = JSON.parse(window.__bulkMemory || '{}');
   if (Array.isArray(mem.history)) chat.history = mem.history.slice(-20);
   if (Array.isArray(mem.facts)) chat.facts = mem.facts.slice(-40);
+  if (mem.progress && typeof mem.progress === 'object') Object.assign(prog, mem.progress);
 } catch (_) {}
-function saveMemory() {
+// Сохраняем не на каждый тычок, а раз в секунду после последнего изменения.
+let memTimer = 0;
+function saveMemory() { clearTimeout(memTimer); memTimer = setTimeout(saveMemoryNow, 1000); }
+function saveMemoryNow() {
   try {
+    prog.diary = prog.diary.slice(-60);
+    prog.visitDays = prog.visitDays.slice(-60);
     window.webkit.messageHandlers.bulk.postMessage({
-      type: 'saveMemory', json: JSON.stringify({ history: chat.history.slice(-20), facts: chat.facts.slice(-40) })
+      type: 'saveMemory',
+      json: JSON.stringify({ history: chat.history.slice(-20), facts: chat.facts.slice(-40), progress: prog })
     });
   } catch (_) {}
 }
+// Новый день: отмечаем визит; вчерашний день Бульк записывает в дневник.
+function startDay() {
+  prog.stats = prog.stats || {}; prog.unlocked = prog.unlocked || {};
+  prog.visitDays = prog.visitDays || []; prog.diary = prog.diary || [];
+  if (typeof prog.love !== 'number') prog.love = 50;
+  if (!prog.day || typeof prog.day !== 'object') prog.day = { date: '', stats: {}, notes: [] };
+  const today = todayStr();
+  if (prog.day.date && prog.day.date !== today) {
+    const prev = prog.day;
+    if (hasActivity(prev) && !prog.diary.some(e => e.date === prev.date)) writeDiary(prev);
+    prog.day = { date: today, stats: {}, notes: [] };
+  }
+  if (!prog.day.date) prog.day.date = today;
+  if (!prog.visitDays.includes(today)) {
+    prog.visitDays.push(today);
+    prog.stats.days = (prog.stats.days || 0) + 1;
+    love(2);
+    checkAchievements();
+  }
+  saveMemory();
+  // вечером Бульк сам пишет про сегодня
+  if (new Date().getHours() >= 21 && hasActivity(prog.day) && !prog.diary.some(e => e.date === today)) {
+    setTimeout(() => writeDiary(prog.day), 5000);
+  }
+}
+function hasActivity(day) { return Object.keys(day.stats || {}).length > 0 || (day.notes || []).length > 0; }
+async function writeDiary(day) {
+  if (!geminiKey) return false;
+  const s = day.stats || {};
+  const what = [
+    s.drinks && `наливали ${s.drinks} раз`, s.pokes && `тыкали ${s.pokes} раз`, s.throws && `кидали меня ${s.throws} раз`,
+    s.lightsOff && `выключали свет ${s.lightsOff} раз`, s.shoes && `кидали в меня ботинок ${s.shoes} раз`,
+    s.naps && `укладывали спать ${s.naps} раз`, s.sulks && `я обижался ${s.sulks} раз`, s.forgives && 'мы мирились',
+    s.chats && `болтали (${s.chats} сообщений)`, s.remindersDone && `хозяин выполнил ${s.remindersDone} дел`
+  ].filter(Boolean).join(', ');
+  const notes = (day.notes || []).slice(-8).map(n => '— ' + n).join('\n');
+  const prompt = `Напиши запись в свой личный дневник за ${day.date}: 2–4 коротких предложения от первого лица, в своём стиле, смешно и по-доброму к хозяину, можно с матом. Что было за день: ${what || 'тихий день'}.` +
+    (notes ? `\nХозяин писал мне:\n${notes}` : '') + '\nОтветь JSON: {"reply": "текст записи", "action": "none"}';
+  try {
+    const out = await geminiOnce(prompt);
+    const text = String(out.reply || '').trim();
+    if (!text) return false;
+    prog.diary = prog.diary.filter(e => e.date !== day.date).concat({ date: day.date, text });
+    saveMemory();
+    if (!sheet.hidden) renderSheet();
+    return true;
+  } catch (_) { return false; }
+}
+
+// ---------- окно «Ачивки и дневник» ----------
+const sheet = document.getElementById('sheet');
+let sheetTab = 'ach';
+function renderSheet() {
+  document.getElementById('tabAch').classList.toggle('on', sheetTab === 'ach');
+  document.getElementById('tabDiary').classList.toggle('on', sheetTab === 'diary');
+  document.getElementById('paneAch').hidden = sheetTab !== 'ach';
+  document.getElementById('paneDiary').hidden = sheetTab !== 'diary';
+  document.getElementById('loveLabel').textContent = 'Бульк к тебе: ' + loveLabel();
+  document.getElementById('loveFill').style.width = Math.round(prog.love) + '%';
+  const got = ACHIEVEMENTS.filter(a => prog.unlocked[a.id]).length;
+  document.getElementById('achCount').textContent = `${got} из ${ACHIEVEMENTS.length}`;
+  document.getElementById('achList').innerHTML = ACHIEVEMENTS.map(a => {
+    const have = Math.min(prog.stats[a.k] || 0, a.n);
+    const done = !!prog.unlocked[a.id];
+    return `<div class="ach${done ? ' done' : ''}"><span class="ach-icon">${done ? a.icon : '🔒'}</span>` +
+      `<span class="ach-text"><b>${a.t}</b><small>${a.d}</small></span><span class="ach-num">${done ? '✓' : have + '/' + a.n}</span></div>`;
+  }).join('');
+  const entries = prog.diary.slice().reverse();
+  document.getElementById('diaryList').innerHTML = entries.length
+    ? entries.map(e => `<div class="entry"><small>${e.date.split('-').reverse().join('.')}</small><p>${e.text.replace(/</g, '&lt;')}</p></div>`).join('')
+    : '<p class="empty">Пока пусто. Вечером Бульк сам напишет, как прошёл день.</p>';
+}
+function openSheet(tab) { sheetTab = tab || sheetTab; renderSheet(); sheet.hidden = false; }
+document.getElementById('bProgress').onclick = () => openSheet('ach');
+document.getElementById('sheetClose').onclick = () => { sheet.hidden = true; };
+sheet.addEventListener('click', e => { if (e.target === sheet) sheet.hidden = true; });
+document.getElementById('tabAch').onclick = () => { sheetTab = 'ach'; renderSheet(); };
+document.getElementById('tabDiary').onclick = () => { sheetTab = 'diary'; renderSheet(); };
+document.getElementById('diaryNow').onclick = async () => {
+  const btn = document.getElementById('diaryNow');
+  btn.disabled = true; btn.textContent = 'Бульк пишет…';
+  const ok = await writeDiary(prog.day);
+  btn.disabled = false; btn.textContent = ok ? 'Готово ✍️' : 'Не вышло, попробуй позже';
+  setTimeout(() => { btn.textContent = 'Пусть Бульк запишет сегодняшний день'; }, 2500);
+};
 const chatForm = document.getElementById('chatForm');
 const chatInput = document.getElementById('chatInput');
 // Google часто меняет модели — пробуем по очереди; если модель закрыли,
@@ -715,13 +908,29 @@ setChatPlaceholder();
 async function askGemini(text) {
   chat.history.push({ role: 'user', parts: [{ text }] });
   chat.history = chat.history.slice(-12);
-  const body = {
+  const out = await callGemini({
     systemInstruction: { parts: [{ text: BULK_PERSONA + '\nСейчас: ' + nowForPrompt() + '.' +
       (sulking() ? '\nСейчас ты ОБИЖЕН на хозяина: он задолбал тебя тычками. Отвечай обиженно и коротко, через губу. Если он искренне извиняется — прости его и добавь в JSON \"forgive\": true.' : '') +
+      '\nКак ты сейчас относишься к хозяину: ' + loveLabel() + '.' +
       (chat.facts.length ? '\nЧто ты знаешь о хозяине:\n- ' + chat.facts.join('\n- ') : '') }] },
     contents: chat.history,
     generationConfig: { responseMimeType: 'application/json', temperature: 1, maxOutputTokens: 1024 }
-  };
+  });
+  chat.history.push({ role: 'model', parts: [{ text: JSON.stringify(out) }] });
+  return out;
+}
+
+// Разовый запрос к Gemini без переписки (для дневника).
+function geminiOnce(prompt) {
+  return callGemini({
+    systemInstruction: { parts: [{ text: BULK_PERSONA + '\nСейчас: ' + nowForPrompt() + '.' }] },
+    contents: [{ role: 'user', parts: [{ text: prompt }] }],
+    generationConfig: { responseMimeType: 'application/json', temperature: 1, maxOutputTokens: 1024 }
+  });
+}
+
+// Перебирает модели, пока какая-то не ответит; возвращает разобранный JSON-ответ Булька.
+async function callGemini(body) {
   let lastErr = '';
   const queue = MODELS.slice();
   const tried = new Set();
@@ -749,7 +958,6 @@ async function askGemini(text) {
       .map(p => p.text || '').join('');
     let out;
     try { out = JSON.parse(raw); } catch (_) { out = { reply: raw.trim() || '...', action: 'none' }; }
-    chat.history.push({ role: 'model', parts: [{ text: JSON.stringify(out) }] });
     return out;
   }
   throw new Error(lastErr || 'не получилось');
@@ -771,13 +979,16 @@ function performChat(out) {
   saveMemory();
   if (out.forgive && sulking()) {
     sulkUntil = 0;
+    bump('forgives'); love(5);
     try { window.webkit.messageHandlers.bulk.postMessage({ type: 'forgive' }); } catch (_) {}
   }
   if (out.mood === 'support' || out.mood === 'cheer') {
     dayMood = out.mood;
+    love(2);
     try { window.webkit.messageHandlers.bulk.postMessage({ type: 'mood', mood: out.mood, hours: 6 }); } catch (_) {}
   }
   if (out.reminder_done) {
+    bump('remindersDone'); love(3);
     try { window.webkit.messageHandlers.bulk.postMessage({ type: 'reminderDone', hint: String(out.reminder_done).slice(0, 80) }); } catch (_) {}
   }
   const rem = out.reminder;
@@ -834,6 +1045,8 @@ chatForm.addEventListener('submit', async (e) => {
   try {
     const out = await askGemini(text);
     chat.waiting = false;
+    bump('chats'); love(1);
+    prog.day.notes = (prog.day.notes || []).concat(text.slice(0, 80)).slice(-10);
     performChat(out);
   } catch (err) {
     chat.waiting = false;
@@ -936,6 +1149,7 @@ function endPtr() {
     if (sp > mx) { vx *= mx / sp; vy *= mx / sp; }
     b.vx = vx; b.vy = vy; b.ground = false; b.bouncy = true;
     setAct('flying');
+    bump('throws'); love(-1);
     if (sp > R * 14) say(pick(P.fly), 1.2);
     return;
   }
@@ -1479,6 +1693,7 @@ function frame(now) {
 function start() {
   handFont = getComputedStyle(document.documentElement).getPropertyValue('--font-hand').trim() || 'cursive';
   resize();
+  startDay();
   if (sulking()) { setAct('sulk'); }
   else {
     setAct('wave');
