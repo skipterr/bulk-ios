@@ -1687,7 +1687,13 @@ function tagImage(text, color, px) {
   tagCache.set(key, out);
   return out;
 }
-function tagPx() { return Math.round(R * 0.52 * DPR); }
+let lastTagPx = 0;
+function tagPx() {
+  const px = Math.round(R * 0.52 * DPR);
+  // размер комнаты поменялся (клавиатура, поворот) — старые картинки больше не нужны, не копим их
+  if (px !== lastTagPx) { if (lastTagPx) for (const k of tagCache.keys()) if (k.endsWith('|' + lastTagPx)) tagCache.delete(k); lastTagPx = px; }
+  return px;
+}
 function tagWidth(text) { return tagImage(text, 0, tagPx()).w / DPR; }
 // Высота граффити — на росте Булька (lift — в его ростах над полом). У старых тегов считаем из y.
 function tagLift(tg) { return Number.isFinite(tg.lift) ? tg.lift : clamp(2.4 - (tg.y - 0.2) * 3.4, 0.7, 2.4); }
@@ -2146,7 +2152,11 @@ function start() {
 if (document.fonts && document.fonts.load) {
   Promise.race([Promise.all([document.fonts.load('20px Neucha'), document.fonts.load('900 20px Rubik')]), new Promise(r => setTimeout(r, 1500))]).then(start, start);
   // жирный шрифт догрузился позже — перерисовываем граффити им
-  document.fonts.addEventListener('loadingdone', () => { tagCache.clear(); room.tags.forEach(sendTagImage); });
+  let rubikReady = document.fonts.check('900 20px Rubik');
+  document.fonts.addEventListener('loadingdone', () => {
+    if (rubikReady || !document.fonts.check('900 20px Rubik')) return;   // только когда догрузился именно он
+    rubikReady = true; tagCache.clear(); room.tags.forEach(sendTagImage);
+  });
 } else start();
 })();
 </script>

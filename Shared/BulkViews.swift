@@ -693,12 +693,15 @@ struct FramePose {
 /// Картинки граффити, которые нарисовало приложение (bubble letters, как в комнате приложения).
 enum TagImages {
     #if canImport(UIKit)
-    static var cache: [String: UIImage] = [:]
+    // ключ + дата файла: приложение перерисовало картинку — виджет берёт новую, а не старую из памяти
+    static var cache: [String: (date: Date, img: UIImage)] = [:]
     static func image(for tag: WallTag) -> UIImage? {
-        if let img = cache[tag.imageKey] { return img }
         guard let url = SharedGroup.tagsFolder?.appendingPathComponent(tag.imageKey + ".png"),
-              let img = UIImage(contentsOfFile: url.path) else { return nil }
-        cache[tag.imageKey] = img
+              let date = (try? FileManager.default.attributesOfItem(atPath: url.path))?[.modificationDate] as? Date
+        else { return nil }
+        if let hit = cache[tag.imageKey], hit.date == date { return hit.img }
+        guard let img = UIImage(contentsOfFile: url.path) else { return nil }
+        cache[tag.imageKey] = (date, img)
         return img
     }
     #endif

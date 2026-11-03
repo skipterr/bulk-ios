@@ -147,7 +147,10 @@ struct BulkWebView: UIViewRepresentable {
                     guard let key = dict["key"] as? String, key.range(of: "^[0-9]+_[0-9]+$", options: .regularExpression) != nil,
                           let b64 = dict["png"] as? String, let png = Data(base64Encoded: b64),
                           let folder = SharedGroup.tagsFolder else { return }
-                    try? png.write(to: folder.appendingPathComponent(key + ".png"), options: .atomic)
+                    // та же картинка уже лежит — не перезаписываем и не дёргаем виджет зря
+                    let file = folder.appendingPathComponent(key + ".png")
+                    if (try? Data(contentsOf: file)) == png { return }
+                    try? png.write(to: file, options: .atomic)
                     WidgetCenter.shared.reloadAllTimelines()
                 case "untag":
                     // Бульк оттёр граффити губкой — и с виджета оно пропадает
