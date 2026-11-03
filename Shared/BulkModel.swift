@@ -281,7 +281,7 @@ enum BulkBrain {
         if missing && Double.random(in: 0...1) < 0.5 { return .missYou }
         var w: [BulkAction: Double] = [
             .chill: 2, .lookAround: 1.6, .sitDown: 1, .yawn: 0.6, .wave: 0.8, .sleep: 0.8, .burp: 0.8,
-            .swear: 0.8, .drink: 0.8, .unscrew: 0.8, .kick: 1, .dance: 0.8, .stare: 0.8, .fly: 0.6
+            .swear: 0.8, .drink: 0.8, .unscrew: 0.35, .kick: 1, .dance: 0.8, .stare: 0.8, .fly: 0.6
         ]
         let cal = Calendar.current
         let hour = cal.component(.hour, from: date)

@@ -201,6 +201,30 @@ struct ShoeView: View {
     }
 }
 
+// Выкрученная лампочка в руках: стеклянная колба и резьбовой цоколь снизу.
+struct HeldBulbView: View {
+    var body: some View {
+        GeometryReader { g in
+            let w = g.size.width, h = g.size.height
+            ZStack {
+                Circle().fill(Color(red: 0.92, green: 0.9, blue: 0.82).opacity(0.85))
+                    .overlay(Circle().stroke(Color(white: 0.08), lineWidth: 1))
+                    .frame(width: w, height: w).position(x: w / 2, y: w / 2)
+                Path { p in                                     // нить накаливания
+                    p.move(to: CGPoint(x: w * 0.3, y: w * 0.55))
+                    p.addLine(to: CGPoint(x: w * 0.42, y: w * 0.38))
+                    p.addLine(to: CGPoint(x: w * 0.58, y: w * 0.55))
+                    p.addLine(to: CGPoint(x: w * 0.7, y: w * 0.38))
+                }
+                .stroke(Color(red: 0.6, green: 0.45, blue: 0.2), lineWidth: 1)
+                RoundedRectangle(cornerRadius: 1.5).fill(Color(white: 0.55))
+                    .overlay(RoundedRectangle(cornerRadius: 1.5).stroke(Color(white: 0.08), lineWidth: 1))
+                    .frame(width: w * 0.5, height: h - w * 0.92).position(x: w / 2, y: (h + w * 0.92) / 2)
+            }
+        }
+    }
+}
+
 // Кружка кофе с паром.
 struct MugView: View {
     var body: some View {
@@ -288,7 +312,8 @@ struct BulkBody: View {
                 hand(at: lh, size: w * 0.17)
                 hand(at: rh, size: w * 0.17)
                 if holding == .bulb {
-                    BulbView(on: false, size: w * 0.17).position(x: w * 0.5, y: h * 0.74)
+                    // лампочку держит перед собой в руках, внизу — чтобы не путалась с лицом
+                    HeldBulbView().frame(width: w * 0.2, height: w * 0.28).position(x: w * 0.5, y: h * 0.8)
                 }
                 if holding == .mug {
                     MugView().frame(width: w * 0.2, height: w * 0.18).position(x: rh.x - w * 0.08, y: rh.y - h * 0.08)

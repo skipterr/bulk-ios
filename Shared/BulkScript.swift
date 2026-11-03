@@ -133,7 +133,7 @@ enum BulkScript {
             walk(to: max(0.2, lampX - 0.3), holding: .bulb, bulb: false)
             add(FramePose(eyes: .happy, mouth: .grin, arms: .hold), holding: .bulb, bulb: false)
         case .inDark:
-            for i in 0..<4 {
+            for i in 0..<2 {
                 add(FramePose(dy: i % 2 == 0 ? -3 : 0, tilt: i % 2 == 0 ? 4 : -4, eyes: .happy, mouth: .grin, arms: .hold),
                     holding: .bulb, bulb: false)
             }
