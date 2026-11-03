@@ -1405,7 +1405,7 @@ function drawDecor(lv) {
     ctx.translate(W * tg.x, FLOOR * tg.y); ctx.rotate(tg.tilt * Math.PI / 180);
     ctx.globalAlpha = 0.7 * a;
     ctx.fillStyle = TAG_COLORS[tg.color % TAG_COLORS.length];
-    ctx.font = italic 900 px Rubik, sans-serif; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.font = `italic 900 ${Math.round(R * 0.45)}px Rubik, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillText(tg.text, 0, 0);
     ctx.restore();
   }
@@ -1414,7 +1414,7 @@ function drawDecor(lv) {
   for (const g of room.gifts) {
     const s = GIFT_SPOT[g]; if (!s) continue;
     const onWall = s.length > 1;
-    ctx.font = ${R * (onWall ? 0.75 : 0.65)}px sans-serif;
+    ctx.font = `${R * (onWall ? 0.75 : 0.65)}px sans-serif`;
     ctx.fillText(GIFT_EMOJI[g], W * s[0], onWall ? FLOOR * s[1] : FLOOR - 2);
   }
   ctx.restore();
@@ -1664,7 +1664,7 @@ function drawHands(rx, ry, mid, lo, lv) {
     } else {
       ctx.translate(mx, my - R * 0.05);
       if (b.holdProp === 'book') ctx.rotate(Math.PI);           // книжка вверх ногами
-      ctx.font = ${R * 0.55}px sans-serif; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.font = `${R * 0.55}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       ctx.fillText(b.holdProp === 'book' ? '📖' : '🎮', 0, 0);
     }
     ctx.restore();
