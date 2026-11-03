@@ -1,4 +1,7 @@
 import SwiftUI
+#if canImport(UIKit)
+import UIKit
+#endif
 
 // MARK: - Лицо
 
@@ -687,19 +690,51 @@ struct FramePose {
     var back: Bool? = nil
 }
 
-/// Граффити-тег как из баллончика: ореол распылённой краски, объёмная тень, тёмный контур,
-/// заливка градиентом, наклонённые буквы и подтёки. Так же рисует приложение (drawTag в bulk.html).
+/// Картинки граффити, которые нарисовало приложение (bubble letters, как в комнате приложения).
+enum TagImages {
+    #if canImport(UIKit)
+    static var cache: [String: UIImage] = [:]
+    static func image(for tag: WallTag) -> UIImage? {
+        if let img = cache[tag.imageKey] { return img }
+        guard let url = SharedGroup.tagsFolder?.appendingPathComponent(tag.imageKey + ".png"),
+              let img = UIImage(contentsOfFile: url.path) else { return nil }
+        cache[tag.imageKey] = img
+        return img
+    }
+    #endif
+}
+
+/// Граффити на стене виджета. Обычно — готовая картинка из приложения (рисуется один раз, не грузит виджет).
+/// Пока картинки нет (приложение ещё не открывали) — упрощённое граффити из текста.
 struct GraffitiTag: View {
     let tag: WallTag
     var dim = false     // свет выключен — краска еле видна
 
-    // пары цветов: верх букв посветлее, низ — насыщеннее
+    var body: some View {
+        Group {
+            #if canImport(UIKit)
+            if let img = TagImages.image(for: tag) {
+                // картинка нарисована вдвое крупнее букв в 17 pt
+                Image(uiImage: img).resizable().interpolation(.high)
+                    .frame(width: img.size.width / 2, height: img.size.height / 2)
+            } else {
+                drawn
+            }
+            #else
+            drawn
+            #endif
+        }
+        .rotationEffect(.degrees(tag.tilt))
+        .opacity(dim ? 0.25 : 0.95)
+    }
+
+    // пары цветов (как TAG_PAL в bulk.html): верх букв посветлее, низ — насыщеннее
     static let colors: [(Color, Color)] = [
-        (Color(red: 1, green: 0.55, blue: 0.7), Color(red: 0.9, green: 0.15, blue: 0.43)),
-        (Color(red: 0.55, green: 0.95, blue: 1), Color(red: 0.1, green: 0.6, blue: 0.9)),
-        (Color(red: 0.8, green: 1, blue: 0.45), Color(red: 0.35, green: 0.8, blue: 0.15)),
-        (Color(red: 1, green: 0.95, blue: 0.5), Color(red: 1, green: 0.6, blue: 0.1)),
-        (Color(white: 1), Color(red: 0.7, green: 0.72, blue: 0.8))
+        (Color(red: 0.83, green: 0.97, blue: 0.54), Color(red: 0.42, green: 0.76, blue: 0.23)),
+        (Color(red: 1, green: 0.72, blue: 0.82), Color(red: 0.94, green: 0.29, blue: 0.53)),
+        (Color(red: 0.68, green: 0.94, blue: 1), Color(red: 0.18, green: 0.71, blue: 0.93)),
+        (Color(red: 1, green: 0.95, blue: 0.63), Color(red: 1, green: 0.76, blue: 0.12)),
+        (Color(red: 0.89, green: 0.78, blue: 1), Color(red: 0.61, green: 0.36, blue: 0.94))
     ]
 
     static let size: CGFloat = 17
@@ -718,20 +753,18 @@ struct GraffitiTag: View {
         return out
     }
 
-    var body: some View {
+    private var drawn: some View {
         let pair = Self.colors[abs(tag.color) % Self.colors.count]
         let word = Text(tag.text.uppercased())
             .font(.system(size: Self.size, weight: .black, design: .rounded))
             .tracking(-0.5)
         let s = Self.size
-        ZStack {
-            // краска распылилась вокруг букв
-            word.foregroundStyle(pair.0.opacity(0.5)).blur(radius: 4)
+        return ZStack {
             // объёмная тень
             word.foregroundStyle(ink).offset(x: s * 0.12, y: s * 0.12)
             // контур
-            ForEach(0..<8, id: \.self) { i in
-                let a: CGFloat = CGFloat(i) * .pi / 4
+            ForEach(0..<4, id: \.self) { i in
+                let a: CGFloat = CGFloat(i) * .pi / 2 + .pi / 4
                 let r: CGFloat = s * 0.09
                 word.foregroundStyle(ink).offset(x: cos(a) * r, y: sin(a) * r)
             }
@@ -749,8 +782,6 @@ struct GraffitiTag: View {
             }
         }
         .transformEffect(CGAffineTransform(a: 1, b: 0, c: -0.18, d: 1, tx: 0, ty: 0))
-        .rotationEffect(.degrees(tag.tilt))
-        .opacity(dim ? 0.25 : 0.95)
     }
 }
 
@@ -812,8 +843,10 @@ struct BulkScene: View {
 
             // граффити на стене
             ForEach(Array(tags.enumerated()), id: \.offset) { _, tag in
+                // на росте Булька, а не под потолком
+                let half = min(w / 2, CGFloat(tag.text.count) * 6.5 + 10)   // целиком в виджете, не за краем
                 GraffitiTag(tag: tag, dim: !lightOn)
-                    .position(x: w * CGFloat(tag.x), y: floorY * CGFloat(tag.y))
+                    .position(x: min(max(w * CGFloat(tag.x), half), w - half), y: floorY - bodyH * CGFloat(tag.widgetLift))
             }
             // подарки: на стене висят, на полу стоят
             ForEach(gifts, id: \.self) { gift in

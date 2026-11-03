@@ -135,6 +135,19 @@ struct WallTag: Codable, Equatable {
     var color: Int
     var tilt: Double
     var createdAt: Date
+    /// Высота над полом в ростах Булька (граффити — на его росте). У старых тегов нет — считаем из y.
+    var lift: Double? = nil
+
+    var liftNow: Double { lift ?? min(2.4, max(0.7, 2.4 - (y - 0.2) * 3.4)) }
+    /// То же для виджета: комната там низкая, поэтому 0,7…2,4 роста сжимаем в 0,45…1,7.
+    var widgetLift: Double { 0.45 + (min(2.4, max(0.7, liftNow)) - 0.7) / 1.7 * 1.25 }
+
+    /// Ключ картинки, которую рисует приложение (как tagSeed в bulk.html).
+    var imageKey: String {
+        var h: UInt32 = 0
+        for u in text.uppercased().unicodeScalars { h = h &* 31 &+ u.value }
+        return "\(h)_\(abs(color) % 5)"
+    }
 
     static let texts = ["БУЛЬК", "ЙОУ", "ЛАМПА МОЯ", "Б★", "BULK", "НЕ ТЫКАЙ", "ТУТ БЫЛ БУЛЬК", "ЗОЖ — ЛОЖЬ"]
 

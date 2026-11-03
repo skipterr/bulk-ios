@@ -62,7 +62,7 @@ struct BulkWebView: UIViewRepresentable {
         let now = Date()
         // подарки и граффити — чтобы в комнате приложения было то же, что на виджете
         let gifts = (try? JSONEncoder().encode(s.gifts)).flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
-        let tags = (try? JSONEncoder().encode(s.tags.map { ["text": $0.text, "x": String($0.x), "y": String($0.y), "color": String($0.color), "tilt": String($0.tilt)] }))
+        let tags = (try? JSONEncoder().encode(s.tags.map { ["text": $0.text, "x": String($0.x), "y": String($0.y), "color": String($0.color), "tilt": String($0.tilt), "lift": $0.lift.map { String($0) } ?? ""] }))
             .flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
         let mood = "{\"offendedUntil\":\(Int(s.offendedUntil.timeIntervalSince1970 * 1000)),\"awayHours\":\(Int(now.timeIntervalSince(s.lastVisit) / 3600)),\"mood\":\(jsString(s.moodNow(at: now))),\"gifts\":\(gifts),\"tags\":\(tags)}"
         s.lastVisit = now
@@ -137,9 +137,17 @@ struct BulkWebView: UIViewRepresentable {
                     guard let text = dict["text"] as? String else { return }
                     var s = BulkStore.load()
                     s.tags.append(WallTag(text: text, x: (dict["x"] as? Double) ?? 0.5, y: (dict["y"] as? Double) ?? 0.4,
-                                          color: (dict["color"] as? Int) ?? 0, tilt: (dict["tilt"] as? Double) ?? 0, createdAt: Date()))
+                                          color: (dict["color"] as? Int) ?? 0, tilt: (dict["tilt"] as? Double) ?? 0, createdAt: Date(),
+                                          lift: dict["lift"] as? Double))
                     if s.tags.count > 5 { s.tags.removeFirst(s.tags.count - 5) }
                     BulkStore.save(s, writer: "app")
+                    WidgetCenter.shared.reloadAllTimelines()
+                case "tagImage":
+                    // картинка граффити, нарисованная страницей, — для виджета
+                    guard let key = dict["key"] as? String, key.range(of: "^[0-9]+_[0-9]+$", options: .regularExpression) != nil,
+                          let b64 = dict["png"] as? String, let png = Data(base64Encoded: b64),
+                          let folder = SharedGroup.tagsFolder else { return }
+                    try? png.write(to: folder.appendingPathComponent(key + ".png"), options: .atomic)
                     WidgetCenter.shared.reloadAllTimelines()
                 case "untag":
                     // Бульк оттёр граффити губкой — и с виджета оно пропадает

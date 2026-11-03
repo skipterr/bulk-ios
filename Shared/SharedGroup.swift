@@ -22,6 +22,14 @@ enum SharedGroup {
         return FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: id) != nil
     }
 
+    /// Папка с картинками граффити (рисует приложение, показывает виджет).
+    static var tagsFolder: URL? {
+        guard let id, let base = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: id) else { return nil }
+        let url = base.appendingPathComponent("tags", isDirectory: true)
+        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        return url
+    }
+
     static var defaults: UserDefaults {
         if isShared, let id, let d = UserDefaults(suiteName: id) { return d }
         return .standard

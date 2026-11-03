@@ -4,7 +4,7 @@
 <title>Бульк</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Neucha&family=Rubik:wght@400;500&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Neucha&family=Rubik:wght@400;500;900&display=swap">
 <style>
 /* Одна сцена во весь экран: тёмная комната на canvas, снизу тонкая панель с кнопками. Тема одна — тёмная, намеренно. */
 :root{
@@ -176,7 +176,7 @@ const P = {
 
 const NAMES = {
   idle: 'залипает', wander: 'гуляет', wave: 'здоровается', jumpy: 'прыгает', sleep: 'спит',
-  swear: 'ругается', burp: 'рыгает', drink: 'выпивает', unscrew: 'ворует лампочку',
+  swear: 'ругается', burp: 'рыгает', drink: 'выпивает', enough: 'больше не пьёт', puke: 'блюёт в углу', unscrew: 'ворует лампочку',
   screwBack: 'вкручивает обратно', fix: 'включает свет', kick: 'пинает ботинок', dance: 'танцует',
   stare: 'пялится на тебя', held: 'у тебя в руках', flying: 'летит', poked: 'возмущается',
   wake: 'проснулся злой', scared: 'боится темноты', read: 'читает письмо', meet: 'знакомится',
@@ -431,6 +431,44 @@ const ACT = {
       return t > 3;
     }, end() { b.puff = 0; } };
   },
+  // перебрал: отодвигает бутылку и отказывается
+  enough() {
+    say(pick(['всё, с меня хватит', 'не-не-не, я пас', 'мне хватит, бро', 'убери это от меня']), 2);
+    b.refusedAt = T;
+    return { update() {
+      b.vx = 0; b.eyes = 'drunk'; b.mouth = 'wavy'; b.blush = Math.max(b.blush, 0.8);
+      b.tiltT = Math.sin(this.t * 7) * 0.12;                               // мотает головой
+      b.poseT = { l: REST.l, r: [1.15, -0.05 + Math.sin(this.t * 10) * 0.1] }; // отмахивается
+      return this.t > 2.4;
+    } };
+  },
+  // налили после «хватит» — бежит в угол блевать
+  puke() {
+    const dir = b.x < W / 2 ? -1 : 1, tx = dir < 0 ? R * 1.1 : W - R * 1.1;
+    let ph = 0, p0 = 0, gl = 0;
+    say(pick(['ой... щас...', 'мне плохо', 'ой-ой-ой']), 1.4);
+    return { update(dt) {
+      b.eyes = 'drunk'; b.mouth = 'puff';
+      if (ph === 0) {
+        if (walk(tx, dt) || this.t > 5) { ph = 1; p0 = this.t; b.vx = 0; }
+        return false;
+      }
+      const k = this.t - p0;
+      b.back = true; b.dir = dir; b.sTarget = 0.9 + Math.sin(k * 9) * 0.05;
+      gl -= dt;
+      if (k > 0.5 && k < 2.6 && gl <= 0) {
+        gl = 0.06;
+        spawn({ type: 'spark', x: b.x + dir * R * 0.9, y: b.y - R * 1.1, vx: dir * R * rand(1, 3), vy: R * rand(0.5, 3), life: 0.7, max: 0.7,
+                color: pick(['#9acd32', '#b5c640', '#7da82a']) });
+      }
+      if (k > 0.5 && k < 0.6) { say('БУЭЭЭЭ', 1.6); shake(R * 0.12); }
+      if (k > 3) {
+        b.back = false; b.eyes = 'sleepy'; b.mouth = 'flat';
+        if (k < 3.1) { say(pick(['фух... полегчало', 'больше не наливай', 'я в норме, честно']), 2); b.tipsy = 0.6; }
+      }
+      return k > 4.5;
+    }, end() { b.back = false; } };
+  },
   drink() {
     let gl = 0, done = false;
     say(pick(P.cheers), 1.4);
@@ -534,20 +572,23 @@ const ACT = {
     const live = !!text;
     let tag = null, tw = 0, cx = 0, ph = 0, p0 = 0, pw = 0, spray = 0;
     if (live) {
-      tag = { text: String(text).toUpperCase().slice(0, 16), x: 0, y: rand(0.25, 0.55), color: Math.floor(rand(0, TAG_FILL.length)), tilt: rand(-8, 8), reveal: 0 };
-      tw = tagWidth(tag.text);
-      cx = tw > W * 0.8 ? W / 2 : clamp(rand(W * 0.25, W * 0.75), tw / 2 + R * 0.4, W - tw / 2 - R * 0.4);
-      tag.x = cx / W;
+      // пишет на уровне своего роста, подальше от других надписей
+      const t = String(text).toUpperCase().slice(0, 16);
+      tw = tagWidth(t);
+      const spot = pickTagSpot(tw);
+      cx = tw > W * 0.8 ? W / 2 : spot.x;
+      tag = { text: t, x: cx / W, y: tagY({ lift: spot.lift }) / FLOOR, lift: spot.lift,
+              color: Math.floor(rand(0, TAG_PAL.length)), tilt: rand(-6, 6), reveal: 0 };
     } else if (room.tags.length) {
-      tag = pick(room.tags); tw = tagWidth(tag.text); cx = W * tag.x;
+      tag = pick(room.tags); tw = tagWidth(tag.text); cx = tagX(tag);
     } else {
       cx = rand(W * 0.2, W * 0.8);
     }
-    const tagY = () => FLOOR * (tag ? tag.y : 0.4);
+    const sprayY = () => tag ? tagY(tag) : FLOOR - R * 2;
     const sprayAt = sx => {
       spray = 0.06;
-      spawn({ type: 'spark', x: sx + rand(-1, 1) * R * 0.25, y: tagY() + rand(-1, 1) * R * 0.25, life: 0.5, max: 0.5,
-              color: TAG_FILL[tag ? tag.color % TAG_FILL.length : 0][0] });
+      spawn({ type: 'spark', x: sx + rand(-1, 1) * R * 0.25, y: sprayY() + rand(-1, 1) * R * 0.25, life: 0.5, max: 0.5,
+              color: TAG_PAL[tag ? Math.abs(tag.color | 0) % TAG_PAL.length : 0][1] });
     };
     return { update(dt) {
       if (ph === 0) {
@@ -572,7 +613,8 @@ const ACT = {
           ph = 2; p0 = this.t; delete tag.reveal;
           if (room.tags.length > 5) room.tags.shift();
           bump('tags'); say(pick(['искусство!', 'я художник', 'Бэнкси нервно курит']), 2);
-          try { window.webkit.messageHandlers.bulk.postMessage({ type: 'tag', text: tag.text, x: tag.x, y: tag.y, color: tag.color, tilt: tag.tilt }); } catch (_) {}
+          sendTagImage(tag);     // сначала картинка, потом сам тег — виджет обновится уже с ней
+          try { window.webkit.messageHandlers.bulk.postMessage({ type: 'tag', text: tag.text, x: tag.x, y: tag.y, lift: tag.lift, color: tag.color, tilt: tag.tilt }); } catch (_) {}
         }
         return false;
       }
@@ -599,7 +641,7 @@ const ACT = {
         if (!cur) return this.t > 1.5;
         ph = 0; p0 = this.t;
       }
-      const tw = tagWidth(cur.text), cx = W * cur.x;
+      const tw = tagWidth(cur.text), cx = tagX(cur);
       b.holdProp = 'sponge';
       if (ph === 0) {
         if (walk(clamp(cx - R * 0.7, R, W - R), dt) || this.t - p0 > 6) { ph = 1; p0 = this.t; b.vx = 0; }
@@ -613,7 +655,7 @@ const ACT = {
       foam -= dt;
       if (foam <= 0) {
         foam = 0.1;
-        spawn({ type: 'spark', x: cx + rand(-0.5, 0.5) * tw, y: FLOOR * cur.y + rand(-1, 1) * R * 0.2, vy: R * 0.8, life: 0.6, max: 0.6, color: '#e6f2ff' });
+        spawn({ type: 'spark', x: cx + rand(-0.5, 0.5) * tw, y: tagY(cur) + rand(-1, 1) * R * 0.2, vy: R * 0.8, life: 0.6, max: 0.6, color: '#e6f2ff' });
       }
       if (cur.fade <= 0) {
         const gone = cur; cur = null;
@@ -741,7 +783,8 @@ const GIFT_SPOT = { poster: [0.16, 0.42], clock: [0.86, 0.28], flag: [0.42, 0.3]
 const room = {
   gifts: Array.isArray(moodBoot.gifts) ? moodBoot.gifts.filter(g => GIFT_EMOJI[g]) : [],
   tags: (Array.isArray(moodBoot.tags) ? moodBoot.tags : []).map(tg => ({
-    text: String(tg.text), x: parseFloat(tg.x), y: parseFloat(tg.y), color: parseInt(tg.color, 10) || 0, tilt: parseFloat(tg.tilt) || 0
+    text: String(tg.text), x: parseFloat(tg.x), y: parseFloat(tg.y), lift: parseFloat(tg.lift),
+    color: parseInt(tg.color, 10) || 0, tilt: parseFloat(tg.tilt) || 0
   }))
 };
 let sulkUntil = Number(moodBoot.offendedUntil) || 0;
@@ -798,6 +841,18 @@ function giveDrink() {
   if (!free()) { say(pick(P.busy), 1); return; }
   if (b.holdBulb) { say(pick(P.handsFull), 1.2); return; }
   if (b.asleep) { setAct('wake'); return; }
+  pour();
+}
+// Налить: в меру — пьёт; уже хорош — «с меня хватит»; налили и после этого — бежит блевать.
+let drinkTimes = [];
+function pour() {
+  drinkTimes = drinkTimes.filter(t => T - t < 180);       // считаем, сколько налили за 3 минуты
+  if (drinkTimes.length >= 3) {
+    if (b.refusedAt && T - b.refusedAt < 90) { b.refusedAt = 0; drinkTimes = []; setAct('puke'); notifyWidget('burp'); bump('pukes'); love(-2); }
+    else setAct('enough');
+    return;
+  }
+  drinkTimes.push(T);
   setAct('drink');
   notifyWidget('drink');
   bump('drinks'); love(1);
@@ -993,7 +1048,8 @@ const CHAT_ACTIONS = {
 };
 const BULK_PERSONA = `Ты Бульк — маленький серый круглый живой персонаж с большими глазами. Живёшь в тёмной комнате с лампочкой на проводе внутри телефона своего хозяина. Ты дерзкий, смешной, бунтарь, но добрый в душе и любишь хозяина. Любишь выпить, поспать, потанцевать, пнуть свой красный кроссовок и выкрутить лампочку.
 Материшься свободно и открытым текстом, без звёздочек и замен, как живой пацан. Но не оскорбляешь людей по национальности, вере и т.п.
-Отвечай по-русски, на «ты», коротко: 1–2 фразы, не больше 140 символов, как в облачке комикса.
+Отвечай по-русски, на «ты», коротко: 1–2 фразы, не больше 170 символов, как в облачке комикса.
+Тебе правда интересен хозяин и его жизнь, поэтому в большинстве ответов задавай встречный вопрос по теме: уточни детали, спроси его мнение, как всё прошло, что он будет делать дальше, как там его близкие и дела, которые ты о нём помнишь. Вопрос один, короткий, в твоём стиле. Не спрашивай, если он прощается или просто просит что-то сделать.
 Отвечай строго JSON: {"reply": "текст ответа", "action": "одно из: none, drink, sleep, dance, burp, swear, wave, jump, kick, unscrew, light_off, light_on, stare"}.
 action выбирай по смыслу: зовут выпить — drink, говорят спать — sleep, праздник или музыка — dance, злишься — swear, приветствие — wave, выключить свет — light_off, включить — light_on. Если ничего не подходит — none.
 Если хозяин рассказал о себе что-то, что стоит запомнить надолго (имя, близкие, работа, увлечения, планы, что любит и не любит), добавь в JSON поле "remember": "короткий факт от третьего лица, например: Хозяина зовут Марк". Потом сам вспоминай эти факты к месту.
@@ -1044,6 +1100,7 @@ async function askGemini(text) {
     systemInstruction: { parts: [{ text: BULK_PERSONA + '\nСейчас: ' + nowForPrompt() + '.' +
       (sulking() ? '\nСейчас ты ОБИЖЕН на хозяина: он задолбал тебя тычками. Отвечай обиженно и коротко, через губу. Если он искренне извиняется — прости его и добавь в JSON \"forgive\": true.' : '') +
       '\nКак ты сейчас относишься к хозяину: ' + loveLabel() + '.' +
+      (drinkTimes.filter(t => T - t < 180).length >= 3 ? '\nТы уже перебрал и пить больше не хочешь: если зовут выпить — отказывайся («всё, с меня хватит»).' : '') +
       '\nНа стене сейчас граффити: ' + (room.tags.length ? room.tags.map(t => t.text).join(', ') : 'ничего') + '.' +
       (chat.facts.length ? '\nЧто ты знаешь о хозяине:\n- ' + chat.facts.join('\n- ') : '') }] },
     contents: chat.history,
@@ -1103,7 +1160,7 @@ function sendLetter() {
 }
 
 function performChat(out) {
-  const reply = String(out.reply || '...').slice(0, 220);
+  const reply = String(out.reply || '...').slice(0, 260);
   const a = String(out.action || 'none');
   if (out.remember) {
     const fact = String(out.remember).slice(0, 160);
@@ -1140,8 +1197,11 @@ function performChat(out) {
   else if (a === 'light_on' && !lamp.on && lamp.hasBulb) toggleLamp();
   else if (CHAT_ACTIONS[a] && free() && !b.asleep) {
     const n = CHAT_ACTIONS[a];
-    if (!(n === 'kick' && !shoeResting()) && !(n === 'unscrew' && !lamp.hasBulb)) setAct(n);
-    notifyWidget(n === 'jumpy' ? 'dance' : n);
+    if (n === 'drink') pour();     // в чате «наливай» работает так же, как кнопка
+    else {
+      if (!(n === 'kick' && !shoeResting()) && !(n === 'unscrew' && !lamp.hasBulb)) setAct(n);
+      notifyWidget(n === 'jumpy' ? 'dance' : n);
+    }
   }
   // рассказал о дне — сразу обнимает или пляшет от радости
   if ((out.mood === 'cheer' || out.mood === 'support') && !CHAT_ACTIONS[a] && free() && !b.asleep && !sulking()) {
@@ -1501,56 +1561,154 @@ function drawRoom(lv) {
 }
 
 // Граффити на стене и подарки в комнате.
-// Граффити как из баллончика: ореол краски, объёмная тень, контур, подтёки, заливка градиентом.
-// Так же рисует виджет (GraffitiTag в BulkViews.swift).
-const TAG_FILL = [['#ff8cb3', '#e6266e'], ['#8cf2ff', '#1a99e6'], ['#ccff73', '#59cc26'], ['#fff280', '#ff9919'], ['#ffffff', '#b3b8cc']];
-function tagDrips(text, size) {
+// Граффити в стиле bubble letters: надутые прыгающие буквы, толстый чёрный контур, объёмная тень,
+// полосы тени внутри букв, белые блики, пузыри, подтёки и брызги баллончика.
+// Каждая надпись рисуется ОДИН раз в отдельную картинку, дальше на экран идёт готовая (иначе тормозит).
+// Эту же картинку приложение отдаёт виджету — там граффити выглядят точно так же.
+const TAG_PAL = [                       // светлый, основной, тёмный
+  ['#d4f78a', '#6cc33a', '#2c6e18'], ['#ffb8d0', '#f04a86', '#951545'], ['#adf0ff', '#2fb4ec', '#0f5c92'],
+  ['#fff3a0', '#ffc21f', '#b86200'], ['#e3c8ff', '#9b5cf0', '#4d2199']
+];
+const TAG_INK = '#0d0d10';
+function tagSeed(text) {
   let h = 0;
-  for (const ch of text) h = (Math.imul(h, 31) + ch.codePointAt(0)) >>> 0;
-  return [0, 1, 2].map(i => ({
-    x: 0.12 + 0.76 * ((h >>> (i * 5)) % 32) / 31,
-    len: size * (0.25 + 0.5 * ((h >>> (i * 7 + 3)) % 16) / 15)
-  }));
+  for (const ch of String(text).toUpperCase()) h = (Math.imul(h, 31) + ch.codePointAt(0)) >>> 0;
+  return h;
 }
-function tagFont() { return `900 ${Math.round(R * 0.5)}px Rubik, sans-serif`; }
-function tagWidth(text) {
-  ctx.save(); ctx.font = tagFont();
-  const w = ctx.measureText(String(text).toUpperCase()).width;
-  ctx.restore();
-  return w;
+function seededRand(seed) {
+  let s = seed || 1;
+  return () => { s = (Math.imul(s, 1664525) + 1013904223) >>> 0; return s / 4294967296; };
+}
+function rr(g, x, y, w, h, r) {
+  g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r);
+  g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath();
+}
+const tagCache = new Map();
+// px — размер букв в пикселях картинки. Форма зависит только от текста, цвет — только от color.
+function tagImage(text, color, px) {
+  text = String(text).toUpperCase();
+  const key = text + '|' + color + '|' + px;
+  if (tagCache.has(key)) return tagCache.get(key);
+  const [light, base, dark] = TAG_PAL[Math.abs(color | 0) % TAG_PAL.length];
+  const r = seededRand(tagSeed(text));
+  const fontOf = sc => `900 ${px * sc}px Rubik, sans-serif`;
+  const m = document.createElement('canvas').getContext('2d');
+  // буквы прыгают: у каждой свой наклон, высота и размер, налезают друг на друга
+  const letters = []; let x = 0;
+  for (const ch of text) {
+    const sc = 0.9 + r() * 0.25;
+    m.font = fontOf(sc);
+    const w = m.measureText(ch).width;
+    letters.push({ ch, sc, x: x + w / 2, dy: (r() - 0.5) * px * 0.24, rot: (r() - 0.5) * 0.36,
+                   drip: /[\p{L}\p{N}]/u.test(ch) && r() < 0.3, dl: px * (0.3 + r() * 0.55) });
+    x += ch === ' ' ? px * 0.5 : w * 0.95;
+  }
+  const tw = Math.max(x, px), pad = Math.round(px * 0.9);
+  const c = document.createElement('canvas');
+  c.width = Math.ceil(tw + pad * 2); c.height = Math.ceil(px * 1.4 + pad * 2);
+  const cy = pad + px * 0.7, ox = pad;
+  const layer = (g, fn) => {
+    for (const L of letters) {
+      if (L.ch === ' ') continue;
+      g.save(); g.translate(ox + L.x, cy + L.dy); g.rotate(L.rot);
+      g.font = fontOf(L.sc); g.textAlign = 'center'; g.textBaseline = 'middle'; g.lineJoin = 'round';
+      fn(g, L); g.restore();
+    }
+  };
+  const g = c.getContext('2d');
+  // брызги баллончика вокруг
+  for (let i = 0; i < 26 + text.length * 4; i++) {
+    g.globalAlpha = 0.15 + r() * 0.4; g.fillStyle = r() < 0.6 ? base : TAG_INK;
+    g.beginPath(); g.arc(ox + r() * tw, cy + (r() - 0.5) * px * 1.7, 0.6 + r() * px * 0.04, 0, Math.PI * 2); g.fill();
+  }
+  g.globalAlpha = 1;
+  // ореол краски
+  g.save(); g.shadowColor = base; g.shadowBlur = px * 0.45; g.globalAlpha = 0.35;
+  layer(g, (g, L) => { g.fillStyle = base; g.fillText(L.ch, 0, 0); });
+  g.restore();
+  // буквы «надуваем» обводкой своего же цвета — получаются пухлые bubble letters
+  const fat = px * 0.09, ow = fat + px * 0.2;
+  const blob = (g, L, color, dx, dy) => {
+    g.fillStyle = color; g.strokeStyle = color; g.lineWidth = fat;
+    g.fillText(L.ch, dx, dy); g.strokeText(L.ch, dx, dy);
+  };
+  // объёмная тень (выдавлена вниз-вправо) и толстый контур
+  for (let k = 4; k >= 0; k--) layer(g, (g, L) => {
+    g.strokeStyle = TAG_INK; g.fillStyle = TAG_INK; g.lineWidth = ow;
+    g.strokeText(L.ch, k * px * 0.035, k * px * 0.035); g.fillText(L.ch, k * px * 0.035, k * px * 0.035);
+  });
+  // подтёки стекают из-под букв: контур
+  const drips = letters.filter(L => L.drip), dw = px * 0.15, dTop = L => cy + L.dy + px * 0.15;
+  for (const L of drips) { g.fillStyle = TAG_INK; rr(g, ox + L.x - dw / 2 - ow / 2, dTop(L), dw + ow, L.dl + ow / 2, (dw + ow) / 2); g.fill(); }
+  // заливка букв: тёмная полоса снизу-справа, основной цвет, светлая полоса сверху, белый блик
+  const f = document.createElement('canvas'); f.width = c.width; f.height = c.height;
+  const fg = f.getContext('2d');
+  layer(fg, (g, L) => blob(g, L, dark, 0, 0));
+  fg.globalCompositeOperation = 'source-atop';
+  layer(fg, (g, L) => blob(g, L, base, -px * 0.05, -px * 0.07));
+  layer(fg, (g, L) => {
+    g.save(); g.beginPath(); g.rect(-px, -px, px * 2, px * 0.86); g.clip();
+    blob(g, L, light, -px * 0.05, -px * 0.07); g.restore();
+  });
+  layer(fg, (g, L) => { g.strokeStyle = 'rgba(255,255,255,0.9)'; g.lineWidth = px * 0.045; g.strokeText(L.ch, px * 0.06, px * 0.08); });
+  // подтёки — позади букв
+  fg.globalCompositeOperation = 'destination-over';
+  for (const L of drips) {
+    fg.fillStyle = 'rgba(255,255,255,0.7)'; fg.fillRect(ox + L.x - dw * 0.2, dTop(L) + L.dl * 0.45, dw * 0.15, L.dl * 0.35);
+    fg.fillStyle = base; rr(fg, ox + L.x - dw / 2, dTop(L), dw, L.dl, dw / 2); fg.fill();
+  }
+  fg.globalCompositeOperation = 'source-over';
+  g.drawImage(f, 0, 0);
+  // пузыри вокруг букв
+  for (let i = 0; i < 3 + (text.length > 5 ? 2 : 0); i++) {
+    const bx = ox + r() * tw, top = r() < 0.6, by = top ? cy - px * (0.75 + r() * 0.3) : cy + px * (0.6 + r() * 0.3);
+    const br = px * (0.06 + r() * 0.09);
+    g.fillStyle = TAG_INK; g.beginPath(); g.arc(bx, by, br + px * 0.035, 0, Math.PI * 2); g.fill();
+    g.fillStyle = r() < 0.5 ? light : base; g.beginPath(); g.arc(bx, by, br, 0, Math.PI * 2); g.fill();
+    g.fillStyle = '#fff'; g.beginPath(); g.arc(bx - br * 0.35, by - br * 0.35, br * 0.28, 0, Math.PI * 2); g.fill();
+  }
+  const out = { c, w: tw };      // центр надписи — центр картинки
+  tagCache.set(key, out);
+  return out;
+}
+function tagPx() { return Math.round(R * 0.52 * DPR); }
+function tagWidth(text) { return tagImage(text, 0, tagPx()).w / DPR; }
+// Высота граффити — на росте Булька (lift — в его ростах над полом). У старых тегов считаем из y.
+function tagLift(tg) { return Number.isFinite(tg.lift) ? tg.lift : clamp(2.4 - (tg.y - 0.2) * 3.4, 0.7, 2.4); }
+function tagY(tg) { return FLOOR - tagLift(tg) * R * RY_K * 2; }
+// Надпись целиком на экране, даже если её нарисовали у самого края.
+function tagX(tg) { const half = tagWidth(tg.text) / 2 + R * 0.2; return half * 2 >= W ? W / 2 : clamp(W * tg.x, half, W - half); }
+// Место для новой надписи — подальше от уже нарисованных.
+function pickTagSpot(tw) {
+  let best = null, bestScore = -1;
+  for (let i = 0; i < 16; i++) {
+    const x = clamp(rand(W * 0.15, W * 0.85), tw / 2 + R * 0.3, Math.max(tw / 2 + R * 0.3, W - tw / 2 - R * 0.3));
+    const lift = rand(0.7, 2.2);
+    let score = 9;
+    for (const t of room.tags) score = Math.min(score, Math.abs(x - W * t.x) / W + Math.abs(lift - tagLift(t)) * 0.5);
+    if (score > bestScore) { bestScore = score; best = { x, lift }; }
+  }
+  return best;
 }
 function drawTag(tg, a) {
-  const size = Math.round(R * 0.5), ink = '#0f0f12';
-  const text = String(tg.text).toUpperCase();
-  const [top, bottom] = TAG_FILL[Math.abs(tg.color | 0) % TAG_FILL.length];
-  if (tg.fade !== undefined) a *= tg.fade;                   // Бульк оттирает губкой
+  const img = tagImage(tg.text, tg.color, tagPx()), s = 1 / DPR;
+  const cw = img.c.width * s, ch = img.c.height * s;
   ctx.save();
-  ctx.translate(W * tg.x, FLOOR * tg.y); ctx.rotate(tg.tilt * Math.PI / 180);
-  ctx.transform(1, 0, -0.18, 1, 0, 0);                        // буквы с наклоном
-  ctx.font = tagFont();
-  ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round';
-  const tw = ctx.measureText(text).width;
+  ctx.globalAlpha = a * (tg.fade !== undefined ? tg.fade : 1);   // fade — Бульк оттирает губкой
+  ctx.translate(tagX(tg), tagY(tg)); ctx.rotate(tg.tilt * Math.PI / 180);
   if (tg.reveal !== undefined) {
     // ещё рисуется — видно только то, что уже прошёл баллончик
-    ctx.beginPath(); ctx.rect(-tw / 2 - size, -size * 2, size + tw * tg.reveal, size * 5); ctx.clip();
+    ctx.beginPath(); ctx.rect(-cw / 2, -ch / 2, (cw - img.w * s) / 2 + img.w * s * tg.reveal, ch); ctx.clip();
   }
-  const drips = tagDrips(text, size), dw = size * 0.13;
-  // краска распылилась вокруг букв
-  ctx.globalAlpha = 0.5 * a; ctx.shadowColor = top; ctx.shadowBlur = size * 0.6;
-  ctx.fillStyle = top; ctx.fillText(text, 0, 0);
-  ctx.shadowBlur = 0; ctx.globalAlpha = 0.95 * a;
-  // объёмная тень и контур
-  ctx.fillStyle = ink; ctx.strokeStyle = ink; ctx.lineWidth = size * 0.18;
-  ctx.strokeText(text, size * 0.12, size * 0.12); ctx.fillText(text, size * 0.12, size * 0.12);
-  for (const d of drips) { roundRect(-tw / 2 + tw * d.x - dw / 2 - 1, size * 0.2 - 1, dw + 2, d.len + 2, dw / 2 + 1); ctx.fill(); }
-  ctx.strokeText(text, 0, 0);
-  // подтёки и заливка
-  ctx.fillStyle = bottom;
-  for (const d of drips) { roundRect(-tw / 2 + tw * d.x - dw / 2, size * 0.2, dw, d.len, dw / 2); ctx.fill(); }
-  const g = ctx.createLinearGradient(0, -size / 2, 0, size / 2);
-  g.addColorStop(0, top); g.addColorStop(1, bottom);
-  ctx.fillStyle = g; ctx.fillText(text, 0, 0);
+  ctx.drawImage(img.c, -cw / 2, -ch / 2, cw, ch);
   ctx.restore();
+}
+// Отдаём виджету картинку граффити (вдвое крупнее его букв в 17 pt).
+function sendTagImage(tg) {
+  try {
+    const url = tagImage(tg.text, tg.color, 34).c.toDataURL('image/png');
+    window.webkit.messageHandlers.bulk.postMessage({ type: 'tagImage', key: tagSeed(tg.text) + '_' + (Math.abs(tg.color | 0) % TAG_PAL.length), png: url.split(',')[1] });
+  } catch (_) {}
 }
 function drawDecor(lv) {
   const a = 0.3 + 0.7 * lv;
@@ -1956,6 +2114,7 @@ function start() {
   handFont = getComputedStyle(document.documentElement).getPropertyValue('--font-hand').trim() || 'cursive';
   resize();
   startDay();
+  room.tags.forEach(sendTagImage);   // виджету — картинки граффити (и старых тоже)
   if (sulking()) { setAct('sulk'); }
   else {
     setAct('wave');
@@ -1967,7 +2126,9 @@ function start() {
   requestAnimationFrame(t => { last = t; frame(t); });
 }
 if (document.fonts && document.fonts.load) {
-  Promise.race([document.fonts.load('20px Neucha'), new Promise(r => setTimeout(r, 1200))]).then(start, start);
+  Promise.race([Promise.all([document.fonts.load('20px Neucha'), document.fonts.load('900 20px Rubik')]), new Promise(r => setTimeout(r, 1500))]).then(start, start);
+  // жирный шрифт догрузился позже — перерисовываем граффити им
+  document.fonts.addEventListener('loadingdone', () => { tagCache.clear(); room.tags.forEach(sendTagImage); });
 } else start();
 })();
 </script>
