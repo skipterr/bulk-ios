@@ -899,7 +899,7 @@ const chat = { waiting: false, history: [], facts: [] };
 // stats — что ты делал за всё время, love — как Бульк к тебе относится (0–100),
 // day — что было сегодня (из этого Бульк пишет дневник), diary — записи дневника.
 // followups — о чём Бульк сам спросит потом («ну чё, как экзамен?»): { q, at (мс) }.
-const prog = { stats: {}, unlocked: {}, love: 50, visitDays: [], day: { date: '', stats: {}, notes: [] }, diary: [], followups: [], owned: [] };
+const prog = { stats: {}, unlocked: {}, love: 50, visitDays: [], day: { date: '', stats: {}, notes: [] }, diary: [], followups: [], owned: [], models: {}, lastAnswer: null };
 const ACHIEVEMENTS = [
   { id: 'firstDrink', icon: '🍺', t: 'Первая рюмка', d: 'Налить Бульку', k: 'drinks', n: 1 },
   { id: 'drinks10', icon: '🍻', t: 'Собутыльник', d: 'Налить 10 раз', k: 'drinks', n: 10 },
@@ -1195,30 +1195,53 @@ function replyFromBroken(raw) {
 }
 
 // Перебирает модели, пока какая-то не ответит; возвращает разобранный JSON-ответ Булька.
+// Сначала самая быстрая из отвечавших; те, что недавно молчали, — в конец очереди.
+const noThinking = new Set();   // модели, которые не принимают настройку «не думать»
+function modelQueue() {
+  const m = prog.models, now = Date.now();
+  const bad = x => m[x] && m[x].badUntil > now;
+  const ms = x => (m[x] && m[x].ms) || 4000;
+  return MODELS.filter(x => !bad(x)).sort((a, b) => ms(a) - ms(b)).concat(MODELS.filter(bad));
+}
 async function callGemini(body) {
-  let lastErr = '';
-  const queue = MODELS.slice();
+  let lastErr = '', fails = 0;
+  const queue = modelQueue();
+  const started = Date.now();
   const tried = new Set();
+  const m = prog.models;
   while (queue.length) {
     const model = queue.shift();
     if (tried.has(model)) continue;
     tried.add(model);
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
-    const r = await postJSON(url, body, geminiKey);
+    const config = Object.assign({}, body.generationConfig);
+    if (!noThinking.has(model)) config.thinkingConfig = { thinkingLevel: 'minimal' };   // болтовне «думать» незачем
+    const t0 = Date.now();
+    const r = await postJSON(url, Object.assign({}, body, { generationConfig: config }), geminiKey);
     let data = {};
     try { data = JSON.parse(r.text || '{}'); } catch (_) {}
+    // модель не знает такой настройки — повторяем ту же без неё
+    if (r.status === 400 && config.thinkingConfig && /thinking/i.test(r.text || '')) {
+      noThinking.add(model); tried.delete(model); queue.unshift(model);
+      continue;
+    }
     // 0 — не дождались ответа, 429/500/503 — Google перегружен: пробуем следующую модель
     if (r.status === 0 || r.status === 429 || r.status >= 500) {
       lastErr = (data.error && data.error.message) || 'модель ' + model + ' не ответила';
+      m[model] = { badUntil: Date.now() + 30 * 60000 }; fails++;
       continue;
     }
     if (r.status === 404) {
       lastErr = 'нет модели ' + model;
+      m[model] = { badUntil: Date.now() + 24 * 3600000 }; fails++;
       const hint = /use models\/([\w.-]+)/.exec((data.error && data.error.message) || '');
       if (hint) queue.unshift(hint[1]);
       continue;
     }
     if (r.status !== 200) throw new Error((data.error && data.error.message) || r.text || ('ошибка ' + r.status));
+    m[model] = { ms: Date.now() - t0 };
+    prog.lastAnswer = { model, ms: Date.now() - started, fails };
+    saveMemory();
     const raw = ((data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts) || [])
       .map(p => p.text || '').join('');
     let out;
@@ -1372,6 +1395,13 @@ chatForm.addEventListener('submit', async (e) => {
   if (wall) {
     chatInput.blur(); sendLetter();
     setTimeout(() => doWall(wall), 800);
+    return;
+  }
+  // секретная команда: сколько реально думал последний ответ и какая модель его дала
+  if (text.toLowerCase().replace(/[!.\s]/g, '') === 'скорость') {
+    chatInput.blur();
+    const la = prog.lastAnswer;
+    say(la ? `${la.model}: ${(la.ms / 1000).toFixed(1)} с, не ответили до неё: ${la.fails}` : 'я ещё ни разу не отвечал', 7, true);
     return;
   }
   // ключи Gemini бывают старого вида (AIza…) и нового (AQ.…)
