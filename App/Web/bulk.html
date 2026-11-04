@@ -993,6 +993,8 @@ function startDay() {
   prog.stats = prog.stats || {}; prog.unlocked = prog.unlocked || {};
   prog.visitDays = prog.visitDays || []; prog.diary = prog.diary || [];
   if (typeof prog.love !== 'number') prog.love = 50;
+  // записи дневника, куда попал служебный текст ответа (reply: … action: none), чистим
+  for (const e of prog.diary) if (/reply["']?\s*:/i.test(e.text)) e.text = replyFromBroken(e.text);
   if (!prog.day || typeof prog.day !== 'object') prog.day = { date: '', stats: {}, notes: [] };
   const today = todayStr();
   if (prog.day.date && prog.day.date !== today) {
@@ -1181,13 +1183,18 @@ function geminiOnce(prompt) {
 }
 
 // Ответ оборвался посреди JSON ({"reply": "О, конечно! Я в ду...) — вытаскиваем саму реплику, без скобок и кавычек.
+// Бывает и без кавычек: {reply: "текст", action: "none"} или reply:текст, action: none.
 function replyFromBroken(raw) {
-  const m = /"reply"\s*:\s*"((?:[^"\\]|\\.)*)/.exec(raw || '');
-  if (!m) return (raw || '').replace(/[{}"]/g, '').trim() || '...';
-  let s = m[1].replace(/\\$/, '');
-  try { s = JSON.parse('"' + s + '"'); } catch (_) { s = s.replace(/\\n/g, ' ').replace(/\\"/g, '"'); }
+  const text = String(raw || '');
+  const m = /["']?reply["']?\s*:\s*["']?/i.exec(text);
+  if (!m) return text.replace(/[{}"]/g, '').trim() || '...';
+  let s = text.slice(m.index + m[0].length);
+  const next = /["']?\s*,\s*["']?(action|remember|mood|gift|ungift|reminder|reminder_done|forgive|draw|erase|followup)["']?\s*:/i.exec(s);
+  const closed = !!next || /["']\s*}?\s*$/.test(s);
+  s = (next ? s.slice(0, next.index) : s.replace(/["']?\s*}?\s*$/, ''))
+    .replace(/\\$/, '').replace(/\\n/g, ' ').replace(/\\"/g, '"');
   // оборвалось на полуслове — обрезаем до последнего целого предложения или слова
-  if (!/"\s*[,}]/.test(raw.slice(m.index + m[0].length, m.index + m[0].length + 3))) {
+  if (!closed) {
     const cut = Math.max(s.lastIndexOf('. '), s.lastIndexOf('! '), s.lastIndexOf('? '));
     s = cut > 10 ? s.slice(0, cut + 1) : s.replace(/\s+\S*$/, '') + '…';
   }
