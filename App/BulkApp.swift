@@ -7,6 +7,7 @@ import UserNotifications
 struct BulkApp: App {
     init() {
         UNUserNotificationCenter.current().delegate = NotificationDelegate.shared
+        Nudges.askPermission()
     }
 
     var body: some Scene {
@@ -28,7 +29,10 @@ struct ContentView: View {
             .preferredColorScheme(.dark)
             // каждый раз, когда открываешь Булька (и после фона тоже), он отмечает, что ты заходил
             .onChange(of: scenePhase) { _, phase in
+                // ушёл из приложения — Бульк готовит сообщения на случай, если ты пропадёшь
+                if phase == .background { Nudges.schedule() }
                 guard phase == .active else { return }
+                Nudges.cancel()
                 var s = BulkStore.load()
                 s.lastVisit = Date()
                 BulkStore.save(s, writer: "app")
@@ -159,6 +163,17 @@ struct BulkWebView: UIViewRepresentable {
                     if let i = s.tags.firstIndex(where: { $0.text == text }) { s.tags.remove(at: i) }
                     BulkStore.save(s, writer: "app")
                     WidgetCenter.shared.reloadAllTimelines()
+                case "setGifts":
+                    // панель «Вещи»: что сейчас стоит в комнате (виджет показывает то же)
+                    guard let list = dict["gifts"] as? [String] else { return }
+                    var s = BulkStore.load()
+                    s.gifts = list.filter { Gifts.all.contains($0) }
+                    BulkStore.save(s, writer: "app")
+                    WidgetCenter.shared.reloadAllTimelines()
+                case "followup":
+                    if let text = dict["text"] as? String, let at = dict["at"] as? String {
+                        Reminders.followUp(text: text, at: at)
+                    }
                 case "remind":
                     if let text = dict["text"] as? String, let at = dict["at"] as? String {
                         Reminders.add(text: text, at: at)

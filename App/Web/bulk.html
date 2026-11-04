@@ -74,6 +74,11 @@ body.typing .corner{display:none}
 .entry{padding:10px 0;border-top:1px solid var(--line)}
 .entry p{margin:4px 0 0;font-family:var(--font-hand);font-size:19px;line-height:1.3}
 .wide{width:100%;margin-top:12px}
+.items{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.item{display:flex;flex-direction:column;align-items:center;gap:3px;padding:9px 2px;min-width:0;background:#1b1c24;border:1px solid var(--line);border-radius:12px;color:inherit;font-size:11px}
+.item span{font-size:26px;line-height:1.1}
+.item.on{border-color:#e6b84a;background:#2c2820}
+.item.locked{opacity:.45}
 </style>
 
 <div class="app">
@@ -88,6 +93,7 @@ body.typing .corner{display:none}
         <div class="tabs">
           <button id="tabAch" type="button" class="on">Ачивки</button>
           <button id="tabDiary" type="button">Дневник</button>
+          <button id="tabRoom" type="button">Вещи</button>
         </div>
         <button id="sheetClose" type="button" aria-label="Закрыть">✕</button>
       </div>
@@ -97,6 +103,13 @@ body.typing .corner{display:none}
           <div class="love-bar"><i id="loveFill"></i></div>
         </div>
         <div id="achList"></div>
+      </div>
+      <div id="paneRoom" hidden>
+        <div class="love">
+          <div class="love-row"><span id="lvlLabel"></span><span id="lvlNext"></span></div>
+          <div class="love-bar"><i id="lvlFill"></i></div>
+        </div>
+        <div class="items" id="itemGrid"></div>
       </div>
       <div id="paneDiary" hidden>
         <div id="diaryList"></div>
@@ -755,12 +768,12 @@ const ACT = {
 
 function brain() {
   if (sulking()) { setAct('sulk'); return; }
-  if (!lamp.hasBulb) { setAct(lastName !== 'idle' && Math.random() < 0.5 ? 'idle' : 'screwBack'); return; }
+  if (!lamp.hasBulb) { setAct('screwBack'); return; }   // лампочку долго не таскает — сразу вкручивает
   if (!lamp.on) { setAct('fix'); return; }
   if (lastName && lastName !== 'idle' && Math.random() < 0.45) { setAct('idle'); return; }
   const w = {
     idle: 1, wander: 3, wave: 1.2, jumpy: 1.3, sleep: 0.9, swear: 1, burp: 1.1,
-    drink: b.tipsy > 1.1 ? 0.2 : 1.1, unscrew: 1.1, kick: shoeResting() ? 1.6 : 0, dance: 1.2, stare: 0.9,
+    drink: b.tipsy > 1.1 ? 0.2 : 1.1, unscrew: 0.2, kick: shoeResting() ? 1.6 : 0, dance: 1.2, stare: 0.9,
     gaming: 0.8, reading: 0.7, graffiti: room.tags.length ? 0.4 : 0
   };
   delete w[lastName];
@@ -780,6 +793,9 @@ const moodBoot = window.__bulkMood || {};
 // Подарки в комнате и граффити на стене (общие с виджетом).
 const GIFT_EMOJI = { poster: '🖼️', clock: '🕰️', flag: '🏴‍☠️', tv: '📺', guitar: '🎸', cactus: '🌵', plant: '🪴', radio: '📻', teddy: '🧸', ball: '⚽', console: '🕹️', pizza: '🍕' };
 const GIFT_SPOT = { poster: [0.16, 0.42], clock: [0.86, 0.28], flag: [0.42, 0.3], tv: [0.9], guitar: [0.05], cactus: [0.8], plant: [0.25], radio: [0.7], teddy: [0.32], ball: [0.55], console: [0.95], pizza: [0.62] };
+const GIFT_NAME = { poster: 'Постер', clock: 'Часы', flag: 'Флаг', tv: 'Телик', guitar: 'Гитара', cactus: 'Кактус', plant: 'Цветок', radio: 'Радио', teddy: 'Мишка', ball: 'Мяч', console: 'Автомат', pizza: 'Пицца' };
+// На каком уровне открывается вещь (в этом порядке идёт панель «Вещи»).
+const ITEM_LEVEL = { plant: 1, poster: 1, ball: 2, pizza: 2, radio: 3, clock: 3, cactus: 4, teddy: 4, guitar: 5, flag: 6, tv: 7, console: 8 };
 const room = {
   gifts: Array.isArray(moodBoot.gifts) ? moodBoot.gifts.filter(g => GIFT_EMOJI[g]) : [],
   tags: (Array.isArray(moodBoot.tags) ? moodBoot.tags : []).map(tg => ({
@@ -882,7 +898,8 @@ const chat = { waiting: false, history: [], facts: [] };
 // ---------- ачивки, отношение к тебе, дневник ----------
 // stats — что ты делал за всё время, love — как Бульк к тебе относится (0–100),
 // day — что было сегодня (из этого Бульк пишет дневник), diary — записи дневника.
-const prog = { stats: {}, unlocked: {}, love: 50, visitDays: [], day: { date: '', stats: {}, notes: [] }, diary: [] };
+// followups — о чём Бульк сам спросит потом («ну чё, как экзамен?»): { q, at (мс) }.
+const prog = { stats: {}, unlocked: {}, love: 50, visitDays: [], day: { date: '', stats: {}, notes: [] }, diary: [], followups: [], owned: [] };
 const ACHIEVEMENTS = [
   { id: 'firstDrink', icon: '🍺', t: 'Первая рюмка', d: 'Налить Бульку', k: 'drinks', n: 1 },
   { id: 'drinks10', icon: '🍻', t: 'Собутыльник', d: 'Налить 10 раз', k: 'drinks', n: 10 },
@@ -928,7 +945,29 @@ function checkAchievements() {
       love(2);
     }
   }
+  // новый уровень открывает вещи для комнаты
+  const lvl = levelOf(xpNow());
+  if (prog.level && lvl > prog.level) {
+    const fresh = Object.keys(ITEM_LEVEL).filter(g => ITEM_LEVEL[g] > prog.level && ITEM_LEVEL[g] <= lvl).map(g => GIFT_EMOJI[g]).join(' ');
+    say(`⬆ уровень ${lvl}!` + (fresh ? ' открылось: ' + fresh : ''), 3.5);
+  }
+  prog.level = lvl;
 }
+// Опыт — всё, что ты делал с Бульком за всё время (прошлые заслуги тоже считаются).
+const XP_WEIGHT = { chats: 5, days: 15, drinks: 2, pokes: 1, throws: 2, lightsOff: 1, shoes: 2, naps: 2, remindersDone: 10, tags: 5, gifts: 5, forgives: 5 };
+function xpNow() { let xp = 0; for (const k in XP_WEIGHT) xp += (prog.stats[k] || 0) * XP_WEIGHT[k]; return xp; }
+// до 2 уровня 25 опыта, до 3 — 100, до 4 — 225…
+function levelOf(xp) { return Math.floor(Math.sqrt(xp / 25)) + 1; }
+// Поставить или убрать вещь в комнате (виджет получает весь список).
+function setGift(g, on) {
+  room.gifts = room.gifts.filter(x => x !== g);
+  if (on) room.gifts.push(g);
+  ownGifts();
+  try { window.webkit.messageHandlers.bulk.postMessage({ type: 'setGifts', gifts: room.gifts }); } catch (_) {}
+}
+// Что уже стояло в комнате — твоё навсегда: убрал, можно поставить обратно, даже если уровень не дорос.
+function ownGifts() { for (const g of room.gifts) if (!prog.owned.includes(g)) prog.owned.push(g); saveMemory(); }
+function itemOpen(g) { return prog.owned.includes(g) || levelOf(xpNow()) >= ITEM_LEVEL[g]; }
 // Память Булька: последние сообщения и факты о хозяине (хранятся в связке ключей iPhone).
 try {
   const mem = JSON.parse(window.__bulkMemory || '{}');
@@ -1006,6 +1045,17 @@ function renderSheet() {
   document.getElementById('tabDiary').classList.toggle('on', sheetTab === 'diary');
   document.getElementById('paneAch').hidden = sheetTab !== 'ach';
   document.getElementById('paneDiary').hidden = sheetTab !== 'diary';
+  document.getElementById('tabRoom').classList.toggle('on', sheetTab === 'room');
+  document.getElementById('paneRoom').hidden = sheetTab !== 'room';
+  const xp = xpNow(), lvl = levelOf(xp), from = 25 * (lvl - 1) * (lvl - 1), to = 25 * lvl * lvl;
+  document.getElementById('lvlLabel').textContent = 'Уровень ' + lvl;
+  document.getElementById('lvlNext').textContent = `${xp} / ${to} опыта`;
+  document.getElementById('lvlFill').style.width = Math.round((xp - from) / (to - from) * 100) + '%';
+  document.getElementById('itemGrid').innerHTML = Object.keys(ITEM_LEVEL).map(g => {
+    const open = itemOpen(g), on = room.gifts.includes(g);
+    return `<button type="button" class="item${on ? ' on' : ''}${open ? '' : ' locked'}" data-gift="${g}"${open ? '' : ' disabled'}>` +
+      `<span>${open ? GIFT_EMOJI[g] : '🔒'}</span>${open ? GIFT_NAME[g] : 'ур. ' + ITEM_LEVEL[g]}</button>`;
+  }).join('');
   document.getElementById('loveLabel').textContent = 'Бульк к тебе: ' + loveLabel();
   document.getElementById('loveFill').style.width = Math.round(prog.love) + '%';
   const got = ACHIEVEMENTS.filter(a => prog.unlocked[a.id]).length;
@@ -1027,6 +1077,14 @@ document.getElementById('sheetClose').onclick = () => { sheet.hidden = true; };
 sheet.addEventListener('click', e => { if (e.target === sheet) sheet.hidden = true; });
 document.getElementById('tabAch').onclick = () => { sheetTab = 'ach'; renderSheet(); };
 document.getElementById('tabDiary').onclick = () => { sheetTab = 'diary'; renderSheet(); };
+document.getElementById('tabRoom').onclick = () => { sheetTab = 'room'; renderSheet(); };
+document.getElementById('itemGrid').addEventListener('click', e => {
+  const btn = e.target.closest('[data-gift]');
+  if (!btn || btn.disabled) return;
+  const g = btn.dataset.gift;
+  setGift(g, !room.gifts.includes(g));
+  renderSheet();
+});
 document.getElementById('diaryNow').onclick = async () => {
   const btn = document.getElementById('diaryNow');
   btn.disabled = true; btn.textContent = 'Бульк пишет…';
@@ -1054,9 +1112,10 @@ const BULK_PERSONA = `Ты Бульк — маленький серый круг
 action выбирай по смыслу: зовут выпить — drink, говорят спать — sleep, праздник или музыка — dance, злишься — swear, приветствие — wave, выключить свет — light_off, включить — light_on. Если ничего не подходит — none.
 Если хозяин рассказал о себе что-то, что стоит запомнить надолго (имя, близкие, работа, увлечения, планы, что любит и не любит), добавь в JSON поле "remember": "короткий факт от третьего лица, например: Хозяина зовут Марк". Потом сам вспоминай эти факты к месту.
 Если хозяин рассказывает, как прошёл его день: плохое (завалил, устал, грустно, поругался) — поддержи по-дружески и добавь "mood": "support"; хорошее (сдал, получилось, праздник, повезло) — порадуйся вместе и добавь "mood": "cheer".
-Если хозяин дарит тебе вещь для комнаты, обрадуйся и добавь поле "gift": одно из poster, clock, flag, tv, guitar, cactus, plant, radio, teddy, ball, console, pizza (выбери самое похожее на подарок).
+Если хозяин дарит тебе вещь для комнаты, обрадуйся и добавь поле "gift": одно из poster, clock, flag, tv, guitar, cactus, plant, radio, teddy, ball, console, pizza (выбери самое похожее на подарок). Если хозяин просит убрать вещь из комнаты, добавь "ungift": то же слово.
 Если хозяин просит нарисовать или написать что-то на стене — добавь "draw": "текст граффити, до 16 символов". Если просит стереть или убрать граффити — добавь "erase": "all" (всё) или текст того граффити, которое стереть. Сам без просьбы стену не трогай.
 Если хозяин говорит, что уже сделал то, о чём ты напоминал (или собирался напомнить), похвали его и добавь поле "reminder_done": "пара ключевых слов этого дела".
+Если хозяин рассказал о важном событии в будущем (экзамен, встреча, поездка, свидание, матч, врач, собеседование), добавь поле "followup": {"question": "короткий вопрос в твоём стиле, как всё прошло, например: ну чё, как экзамен?", "at": "ГГГГ-ММ-ДДTЧЧ:ММ"}. at — местное время, когда событие уже закончится, днём или вечером, не ночью; если точного времени нет — вечер того дня в 19:00. На мелочи и на уже прошедшие события followup не нужен, не повторяй то, о чём уже собираешься спросить.
 Если хозяин просит напомнить о чём-то, добавь в JSON поле "reminder": {"text": "короткий текст напоминания в твоём стиле", "at": "ГГГГ-ММ-ДДTЧЧ:ММ"} — местное время, считай от текущего момента. Если время не сказали — спроси в reply и reminder не добавляй. В остальных случаях "reminder" не нужен.`;
 
 function nowForPrompt() {
@@ -1101,6 +1160,8 @@ async function askGemini(text) {
       (sulking() ? '\nСейчас ты ОБИЖЕН на хозяина: он задолбал тебя тычками. Отвечай обиженно и коротко, через губу. Если он искренне извиняется — прости его и добавь в JSON \"forgive\": true.' : '') +
       '\nКак ты сейчас относишься к хозяину: ' + loveLabel() + '.' +
       (drinkTimes.filter(t => T - t < 180).length >= 3 ? '\nТы уже перебрал и пить больше не хочешь: если зовут выпить — отказывайся («всё, с меня хватит»).' : '') +
+      '\nПринять в подарок сейчас можешь только: ' + Object.keys(ITEM_LEVEL).filter(itemOpen).join(', ') + '. Другие вещи пока закрыты: скажи, что ещё рано, подрасти надо, и поле gift не добавляй.' +
+      (prog.followups.length ? '\nТы уже собираешься спросить: ' + prog.followups.map(f => f.q).join('; ') + '.' : '') +
       '\nНа стене сейчас граффити: ' + (room.tags.length ? room.tags.map(t => t.text).join(', ') : 'ничего') + '.' +
       (chat.facts.length ? '\nЧто ты знаешь о хозяине:\n- ' + chat.facts.join('\n- ') : '') }] },
     contents: chat.history,
@@ -1191,9 +1252,10 @@ function performChat(out) {
     love(2);
     try { window.webkit.messageHandlers.bulk.postMessage({ type: 'mood', mood: out.mood, hours: 6 }); } catch (_) {}
   }
-  if (out.gift && GIFT_EMOJI[out.gift]) {
+  if (out.ungift && room.gifts.includes(out.ungift)) setGift(out.ungift, false);
+  if (out.gift && GIFT_EMOJI[out.gift] && itemOpen(out.gift)) {
     if (!room.gifts.includes(out.gift)) room.gifts.push(out.gift);
-    bump('gifts'); love(3);
+    ownGifts(); bump('gifts'); love(3);
     try { window.webkit.messageHandlers.bulk.postMessage({ type: 'gift', gift: out.gift }); } catch (_) {}
   }
   if (out.reminder_done) {
@@ -1205,6 +1267,15 @@ function performChat(out) {
     try {
       window.webkit.messageHandlers.bulk.postMessage({ type: 'remind', text: String(rem.text).slice(0, 120), at: String(rem.at).slice(0, 16) });
     } catch (_) {}
+  }
+  const fu = out.followup;
+  if (fu && fu.question && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(String(fu.at || ''))) {
+    const when = String(fu.at).slice(0, 16), q = String(fu.question).slice(0, 120);
+    if (new Date(when).getTime() > Date.now() && !prog.followups.some(f => f.q === q)) {
+      prog.followups.push({ q, at: new Date(when).getTime() });
+      saveMemory();
+      try { window.webkit.messageHandlers.bulk.postMessage({ type: 'followup', text: q, at: when }); } catch (_) {}
+    }
   }
   if (act && act.name === 'read') setAct('idle');
   if (a === 'light_off' && lamp.on && lamp.hasBulb) toggleLamp();
@@ -1227,6 +1298,24 @@ function performChat(out) {
   say(reply, clamp(2.5 + reply.length * 0.06, 3.5, 10), true);
 }
 
+// Настало время — Бульк сам спрашивает, как прошло. По одному вопросу, когда ты тут и никто не занят.
+function askFollowup() {
+  const now = Date.now();
+  prog.followups = prog.followups.filter(f => now - f.at < 5 * 864e5);   // старше 5 дней — уже неактуально
+  const f = prog.followups.find(x => x.at <= now);
+  if (!f || document.hidden || onboard.step >= 0 || chat.waiting || !free() || sulking() || document.body.classList.contains('typing')) return;
+  prog.followups = prog.followups.filter(x => x !== f);
+  // вопрос попадает в переписку, чтобы Бульк понял твой ответ; роли в ней должны чередоваться
+  const lastMsg = chat.history[chat.history.length - 1];
+  if (lastMsg && lastMsg.role === 'model') chat.history.push({ role: 'user', parts: [{ text: '(хозяин зашёл в приложение)' }] });
+  chat.history.push({ role: 'model', parts: [{ text: JSON.stringify({ reply: f.q, action: 'none' }) }] });
+  saveMemory();
+  setAct('wave');
+  say(f.q, clamp(2.5 + f.q.length * 0.06, 4, 10), true);
+}
+setInterval(askFollowup, 30000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) setTimeout(askFollowup, 1500); });
+
 // Стена: рисует и стирает только по твоей просьбе. Простые команды понимает и без Gemini:
 // «нарисуй ЙОУ», «напиши на стене …», «сотри», «убери граффити», «сотри ЗОЖ».
 const WALL_FILLER = new Set(['со', 'с', 'на', 'стены', 'стену', 'стене', 'стена', 'все', 'всё', 'граффити', 'надпись', 'надписи',
@@ -1244,6 +1333,20 @@ function wallCommand(text) {
   if (room.tags.some(tg => tg.text.includes(q) || q.includes(tg.text))) return { erase: rest };
   // «убери ботинок» — это не про стену, пусть разбирается Gemini
   return words.length > rest.split(' ').length ? { erase: rest } : null;
+}
+// Вещи в комнате: «убери кактус», «поставь гитару» — тоже без Gemini.
+const GIFT_WORDS = { poster: 'постер', clock: 'часы', flag: 'флаг', tv: 'телевизор|телик', guitar: 'гитар', cactus: 'кактус', plant: 'цветок|цветочек|растени',
+  radio: 'радио', teddy: 'мишк|медвед', ball: 'мяч', console: 'автомат|консол', pizza: 'пицц' };
+function giftCommand(text) {
+  const m = /^(?:бульк[,!\s]+)?(убери|выкинь|выброси|унеси|поставь|верни|повесь)\s+(.+)$/i.exec(text.trim());
+  if (!m) return false;
+  const g = Object.keys(GIFT_WORDS).find(k => new RegExp(GIFT_WORDS[k], 'i').test(m[2]));
+  if (!g) return false;
+  const on = /поставь|верни|повесь/i.test(m[1]);
+  if (on === room.gifts.includes(g)) say(on ? 'так оно уже тут' : 'так его и нет', 2, true);
+  else if (on && !itemOpen(g)) say(`рано, бро. ${GIFT_NAME[g].toLowerCase()} откроется на ${ITEM_LEVEL[g]} уровне`, 3, true);
+  else { setGift(g, on); say(on ? pick(['поставил', 'во, красота', 'другое дело']) : pick(['убрал', 'выкинул, не жалко', 'нет его больше']), 2, true); }
+  return true;
 }
 function doWall(w) {
   if (sulking()) { say(pick(['сам рисуй', 'не, я обижен']), 2); return; }
@@ -1264,6 +1367,7 @@ chatForm.addEventListener('submit', async (e) => {
     nextOnboard();
     return;
   }
+  if (giftCommand(text)) { chatInput.blur(); return; }
   const wall = wallCommand(text);
   if (wall) {
     chatInput.blur(); sendLetter();
@@ -2138,7 +2242,9 @@ function start() {
   handFont = getComputedStyle(document.documentElement).getPropertyValue('--font-hand').trim() || 'cursive';
   resize();
   startDay();
+  ownGifts();
   room.tags.forEach(sendTagImage);   // виджету — картинки граффити (и старых тоже)
+  setTimeout(askFollowup, 4500);     // после приветствия спрашивает, как прошло то, о чём ты рассказывал
   if (sulking()) { setAct('sulk'); }
   else {
     setAct('wave');
