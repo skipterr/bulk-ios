@@ -3,7 +3,19 @@ name: Build IPA
 on:
   push:
     branches: [main]
+  # ручной запуск — это выпуск: сборка уходит в релиз и прилетает обновлением в AltStore
   workflow_dispatch:
+    inputs:
+      notes:
+        description: Что нового
+        required: false
+        default: Новая версия Булька
+
+permissions:
+  contents: write
+
+env:
+  BULK_VERSION: 1.${{ github.run_number }}
 
 jobs:
   build:
@@ -44,6 +56,11 @@ jobs:
         run: |
           # вшиваем права на общую память (App Group); Sideloadly переподпишет своим Apple ID
           APP=build/Release-iphoneos/Bulk.app
+          # у каждой сборки свой номер: по нему AltStore понимает, что вышло обновление
+          for plist in "$APP/Info.plist" "$APP/PlugIns/BulkWidget.appex/Info.plist"; do
+            /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $BULK_VERSION" "$plist"
+            /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${{ github.run_number }}" "$plist"
+          done
           codesign -f -s - --entitlements Widget/BulkWidget.entitlements "$APP/PlugIns/BulkWidget.appex"
           codesign -f -s - --entitlements App/Bulk.entitlements "$APP"
           codesign -d --entitlements - "$APP" || true
@@ -55,3 +72,14 @@ jobs:
         with:
           name: Bulk-ipa
           path: Bulk.ipa
+
+      - name: Publish release for AltStore
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NOTES: ${{ inputs.notes }}
+        run: |
+          TAG="v$BULK_VERSION"
+          python3 Tools/make_source.py "$BULK_VERSION" "$TAG" Bulk.ipa "$NOTES" apps.json
+          cp App/Assets.xcassets/AppIcon.appiconset/icon.png icon.png
+          gh release create "$TAG" Bulk.ipa apps.json icon.png --title "Бульк $BULK_VERSION" --notes "$NOTES"
