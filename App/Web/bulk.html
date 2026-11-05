@@ -978,7 +978,10 @@ try {
 // Сохраняем не на каждый тычок, а раз в секунду после последнего изменения.
 let memTimer = 0;
 function saveMemory() { clearTimeout(memTimer); memTimer = setTimeout(saveMemoryNow, 1000); }
+let memoryLocked = false;   // память только что вставили из буфера — до перезапуска не сохраняем поверх неё
+window.__memoryDone = (msg, lock) => { if (lock) memoryLocked = true; say(msg, 6, true); };
 function saveMemoryNow() {
+  if (memoryLocked) return;
   try {
     prog.diary = prog.diary.slice(-60);
     prog.visitDays = prog.visitDays.slice(-60);
@@ -1402,6 +1405,14 @@ chatForm.addEventListener('submit', async (e) => {
   if (wall) {
     chatInput.blur(); sendLetter();
     setTimeout(() => doWall(wall), 800);
+    return;
+  }
+  // секретные команды: перенести память через буфер обмена (без ключа Gemini)
+  const memCmd = text.toLowerCase().replace(/[!.\s]/g, '');
+  if (memCmd === 'сохранипамять' || memCmd === 'вернипамять') {
+    chatInput.blur();
+    if (memCmd === 'сохранипамять') saveMemoryNow();
+    try { window.webkit.messageHandlers.bulk.postMessage({ type: memCmd === 'сохранипамять' ? 'exportMemory' : 'importMemory' }); } catch (_) {}
     return;
   }
   // секретная команда: сколько реально думал последний ответ и какая модель его дала

@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import WebKit
 import WidgetKit
 import UserNotifications
@@ -163,6 +164,34 @@ struct BulkWebView: UIViewRepresentable {
                     if let i = s.tags.firstIndex(where: { $0.text == text }) { s.tags.remove(at: i) }
                     BulkStore.save(s, writer: "app")
                     WidgetCenter.shared.reloadAllTimelines()
+                case "exportMemory":
+                    // копия памяти в буфер обмена: переустановка с другой подписью не видит старую связку ключей
+                    let s = BulkStore.load()
+                    guard let memory = KeyVault.load(account: "memory"), !memory.isEmpty,
+                          let tags = try? JSONEncoder().encode(s.tags),
+                          let json = try? JSONSerialization.data(withJSONObject: [
+                              "bulkBackup": 1, "memory": memory, "gifts": s.gifts, "tags": tags.base64EncodedString()
+                          ] as [String: Any]), let text = String(data: json, encoding: .utf8) else {
+                        memoryDone("у меня тут пусто, сохранять нечего", lock: false)
+                        return
+                    }
+                    UIPasteboard.general.string = text
+                    memoryDone("сохранил в буфер! закинь в заметки на всякий", lock: false)
+                case "importMemory":
+                    guard let text = UIPasteboard.general.string,
+                          let obj = (try? JSONSerialization.jsonObject(with: Data(text.utf8))) as? [String: Any],
+                          obj["bulkBackup"] != nil, let memory = obj["memory"] as? String else {
+                        memoryDone("в буфере нет моей памяти", lock: false)
+                        return
+                    }
+                    KeyVault.save(memory, account: "memory")
+                    var s = BulkStore.load()
+                    s.gifts = ((obj["gifts"] as? [String]) ?? []).filter { Gifts.all.contains($0) }
+                    if let b64 = obj["tags"] as? String, let data = Data(base64Encoded: b64),
+                       let tags = try? JSONDecoder().decode([WallTag].self, from: data) { s.tags = tags }
+                    BulkStore.save(s, writer: "app")
+                    WidgetCenter.shared.reloadAllTimelines()
+                    memoryDone("всё вспомнил! закрой меня совсем и открой заново", lock: true)
                 case "setGifts":
                     // панель «Вещи»: что сейчас стоит в комнате (виджет показывает то же)
                     guard let list = dict["gifts"] as? [String] else { return }
@@ -194,6 +223,11 @@ struct BulkWebView: UIViewRepresentable {
             }
             BulkStore.save(s, writer: "app")
             WidgetCenter.shared.reloadAllTimelines()
+        }
+
+        // lock — страница больше не сохраняет память, иначе затрёт только что вставленную.
+        private func memoryDone(_ text: String, lock: Bool) {
+            webView?.evaluateJavaScript("window.__memoryDone(\(jsString(text)), \(lock))")
         }
 
         // Запрос к Gemini делаем из приложения и возвращаем ответ странице.
